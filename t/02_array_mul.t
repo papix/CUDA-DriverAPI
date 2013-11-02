@@ -7,17 +7,14 @@ use File::Spec;
 use Cwd;
 use Math::Matrix;
 
-my $length = 16;
-my $max = $length ** 2;
+my $LENGTH = 4;
+my $max = $LENGTH ** 2;
 my $block_size = 32;
 
-my $matrix = matrix($length, $length);
-my $matrix_array = matrix2array($matrix);
+my $matrix = create_matrix($LENGTH, $LENGTH);
 
 my $path = File::Spec->catfile(cwd(), qw/ t ptx 02_array_mul.ptx /);
-my $host_data = CUDA::DeviceAPI::Array->new($matrix_array);
-
-my @answer = @{ matrix2array($matrix * $matrix) };
+my $host_data = CUDA::DeviceAPI::Array->new($matrix);
 
 my $ctx = CUDA::DeviceAPI->new();
 $ctx->init();
@@ -26,25 +23,28 @@ my $dev_ptr_1 = $ctx->malloc_from($host_data => 'f');
 my $dev_ptr_2 = $ctx->malloc_from($host_data => 'f');
 my $dev_ptr_3 = $ctx->malloc($host_data->size() => 'f');
 
-my $size = $ctx->ceil($length / $block_size);
+my $size = $ctx->ceil($LENGTH / $block_size);
 
 $ctx->run($path, 'kernel_sum', [
     $dev_ptr_1 => 'p',
     $dev_ptr_2 => 'p',
     $dev_ptr_3 => 'p',
-    $length    => 'i',
+    $LENGTH    => 'i',
 ], [
     $size, $size, 1, $block_size, $block_size, 1
 ]
 );
 
-$ctx->transfer_d2h($dev_ptr_3, \my $result);
+my $result = $ctx->return($dev_ptr_3);
 
-my @results = unpack 'f*', $result;
+is_deeply($result, [
+    [10, 10, 10, 10],
+    [20, 20, 20, 20],
+    [30, 30, 30, 30],
+    [40, 40, 40, 40],
+]);
 
-is_deeply(\@results, \@answer);
-
-sub matrix {
+sub create_matrix {
     my ($length, $width) = @_;
 
     my $i = 1;
@@ -55,16 +55,7 @@ sub matrix {
         }
         $i++;
     }
-    return Math::Matrix->new(@{$array});
-}
-
-sub matrix2array {
-    my ($matrix) = @_;
-
-    $matrix =~ s/^\s+//;
-    $matrix =~ s/\s+$//;
-
-    return [ map { int($_) } split /\s+/, $matrix ];
+    return $array;
 }
 
 done_testing;

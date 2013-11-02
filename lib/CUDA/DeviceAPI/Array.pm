@@ -18,14 +18,24 @@ sub new {
     }, $class;
 }
 
+sub data {
+    my ($self) = @_;
+    return $self->{data};
+}
+
 sub size {
     my ($self, $dim) = @_;
 
     unless (defined $dim) {
-        return $self->{elem};
+        return $self->{size};
     } else {
         return $self->{size}->{$dim} || 0;
     }
+}
+
+sub elem {
+    my ($self) = @_;
+    return $self->{elem};
 }
 
 sub dim {
@@ -38,10 +48,10 @@ sub _size {
     my ($x_size, $y_size, $z_size) = (scalar @{$data}, 0, 0);
     my ($dim, $elem) = (1, $x_size);
 
-    if (ref $data->[0] eq 'data') {
+    if (ref $data->[0] eq 'ARRAY') {
         for my $y (@{$data}) {
             $y_size = $y_size < scalar @{$y} ? scalar @{$y} : $y_size;
-            if (ref $data->[0]->[0] eq 'data') {
+            if (ref $data->[0]->[0] eq 'ARRAY') {
                 for my $z (@{$y}) {
                     $z_size = $z_size < scalar @{$z} ? scalar @{$z} : $z_size;
                 }

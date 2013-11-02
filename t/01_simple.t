@@ -27,12 +27,9 @@ $ctx->run($path, 'kernel_sum', [
 ]
 );
 
-$ctx->transfer_d2h($dev_ptr_3, \my $result);
+my $result = $ctx->return($dev_ptr_3, 'f');
 
-my @results = unpack 'f*', $result;
-for my $i (0..$max - 1) {
-    is($results[$i], ($i + 1)*2);
-}
+is_deeply($result, [ map { $_ * 2 } 1 .. $max ]);
 
 done_testing;
 
