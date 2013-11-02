@@ -53,5 +53,16 @@
       }
    },
    "release_status" : "unstable",
+   "resources" : {
+      "bugtracker" : {
+         "web" : "https://github.com/papix/CUDA-DeviceAPI/issues"
+      },
+      "homepage" : "https://github.com/papix/CUDA-DeviceAPI",
+      "repository" : {
+         "type" : "git",
+         "url" : "git://github.com/papix/CUDA-DeviceAPI.git",
+         "web" : "https://github.com/papix/CUDA-DeviceAPI"
+      }
+   },
    "version" : "0.01"
 }

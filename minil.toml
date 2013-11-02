@@ -1,1 +1,1 @@
-name = "CUDA-DeviceAPI"
+name = "CUDA-DeviceAPI"[build]build_class = "builder::MyBuilder"
