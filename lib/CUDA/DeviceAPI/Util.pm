@@ -37,12 +37,12 @@ sub array2ref {
     my $array_ref = [];
 
     for my $i (0..$size->{x} - 1) {
-        if ($size->{y} == 0) {
+        if ($size->{y} == 1) {
             my $n = shift @array;
             $array_ref->[$i] = $n;
         } else {
             for my $j (0..$size->{y} - 1) {
-                if ($size->{z} == 0) {
+                if ($size->{z} == 1) {
                     my $n = shift @array;
                     $array_ref->[$i]->[$j] = $n;
                 } else {

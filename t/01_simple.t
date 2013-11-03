@@ -11,7 +11,6 @@ my $path = File::Spec->catfile(cwd(), qw/ t ptx 01_simple.ptx /);
 my $host_data = CUDA::DeviceAPI::Array->new([ 1..$max ]);
 
 my $ctx = CUDA::DeviceAPI->new();
-$ctx->init();
 
 my $dev_ptr_1 = $ctx->malloc_from($host_data => 'f');
 my $dev_ptr_2 = $ctx->malloc_from($host_data => 'f');
@@ -27,7 +26,7 @@ $ctx->run($path, 'kernel_sum', [
 ]
 );
 
-my $result = $ctx->return($dev_ptr_3, 'f');
+my $result = $ctx->return($dev_ptr_3);
 
 is_deeply($result, [ map { $_ * 2 } 1 .. $max ]);
 

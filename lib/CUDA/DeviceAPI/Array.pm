@@ -45,8 +45,7 @@ sub dim {
 
 sub _size {
     my ($data) = @_;
-    my ($x_size, $y_size, $z_size) = (scalar @{$data}, 0, 0);
-    my ($dim, $elem) = (1, $x_size);
+    my ($x_size, $y_size, $z_size) = (scalar @{$data}, 1, 1);
 
     if (ref $data->[0] eq 'ARRAY') {
         for my $y (@{$data}) {
@@ -59,11 +58,15 @@ sub _size {
         }
     }
 
-    if ($y_size > 0) {
-        $dim++; $elem *= $y_size;
-        if ($z_size > 0) {
-            $dim++; $elem *= $z_size;
-        }
+    my $elem = $x_size * $y_size * $z_size;
+    my $dim;
+
+    if ($z_size > 1) {
+        $dim = 3;
+    } elsif ($y_size > 1) {
+        $dim = 2;
+    } else {
+        $dim = 1;
     }
 
     return ($dim, $elem, { x => $x_size, y => $y_size, z => $z_size });

@@ -7,7 +7,7 @@ use File::Spec;
 use Cwd;
 use Math::Matrix;
 
-my $LENGTH = 4;
+my $LENGTH = 3;
 my $max = $LENGTH ** 2;
 my $block_size = 32;
 
@@ -17,7 +17,6 @@ my $path = File::Spec->catfile(cwd(), qw/ t ptx 02_array_mul.ptx /);
 my $host_data = CUDA::DeviceAPI::Array->new($matrix);
 
 my $ctx = CUDA::DeviceAPI->new();
-$ctx->init();
 
 my $dev_ptr_1 = $ctx->malloc_from($host_data => 'f');
 my $dev_ptr_2 = $ctx->malloc_from($host_data => 'f');

@@ -22,7 +22,7 @@ sub new {
     my ($class, %argv) = @_;
 
     bless {
-        context => undef,
+        context => CUDA::DeviceAPI::_init(),
         ptr     => {},
     }, $class;
 }
