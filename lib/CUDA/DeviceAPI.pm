@@ -3,8 +3,6 @@ use 5.008005;
 use strict;
 use warnings;
 use Carp;
-use CUDA::DeviceAPI::Array;
-use CUDA::DeviceAPI::Util;
 
 our $VERSION = "0.01";
 
@@ -23,14 +21,32 @@ sub new {
 
     bless {
         context => CUDA::DeviceAPI::_init(),
-        ptr     => {},
+        addr    => {},
     }, $class;
 }
 
 sub init {
     my ($self) = @_;
-
     $self->{context} ||= CUDA::DeviceAPI::_init();
+}
+
+sub malloc {
+    my ($self, $size) = @_;
+
+    my $addr = CUDA::DeviceAPI::_malloc($self->{context}, $size);
+    $self->{addr}->{$addr} = 1;
+
+    return $addr;
+}
+
+sub transfer_h2d {
+    my ($self, $src_var, $dst_ptr) = @_;
+    CUDA::DeviceAPI::_transfer_h2d($self->{context}, $src_var, $dst_ptr);
+}
+
+sub transfer_d2h {
+    my ($self, $src_ptr, $dst_var) = @_;
+    CUDA::DeviceAPI::_transfer_d2h($self->{context}, $src_ptr, ${$dst_var});
 }
 
 sub run {
@@ -38,72 +54,12 @@ sub run {
 
     Carp::croak("Error!") if @{$args} % 2 != 0;
     for my $i (0 .. $#{$args}) {
-        if ($i % 2) {
+        if ($i % 2 == 1) {
             $args->[$i] = $VARIABLE_TYPE{$args->[$i]};
-        } else {
-            $args->[$i] = ref $args->[$i] eq 'HASH'
-                ? $args->[$i]->{addr} : $args->[$i];
         }
     }
 
     CUDA::DeviceAPI::_run($self->{context}, $ptx_path, $function, $args, $config);
-}
-
-sub array {
-    my $self = shift;
-    return CUDA::DeviceAPI::Array->new(@_);
-}
-
-sub transfer_h2d {
-    my ($self, $array, $type, $dst_ptr) = @_;
-
-    my $type_symbol = type_symbol($type);
-    $array = ref $array eq 'CUDA::DeviceAPI::Array' ? $array : CUDA::DeviceAPI::Array->new($array);
-    my $data = ref2array($array);
-
-    my $binary_data = pack("$type_symbol*", @{$data});
-    CUDA::DeviceAPI::_transfer_h2d($self->{context}, $binary_data, $dst_ptr);
-}
-
-sub transfer_d2h {
-    my ($self, $src_ptr, $dst_var) = @_;
-
-    my $type_symbol = $src_ptr->{type};
-    ${$dst_var} = pack("$type_symbol*", (0) x $src_ptr->{elem});
-
-    CUDA::DeviceAPI::_transfer_d2h($self->{context}, $src_ptr->{addr}, ${$dst_var});
-}
-
-sub malloc_from {
-    my ($self, $array, $type) = @_;
-
-    my $type_symbol = type_symbol($type);
-    $array = ref $array eq 'CUDA::DeviceAPI::Array' ? $array : CUDA::DeviceAPI::Array->new($array);
-
-    my $addr = $self->malloc($array->size, $type_symbol);
-    $self->transfer_h2d($array, $type_symbol, $addr->{addr});
-
-    return $addr;
-}
-
-sub malloc {
-    my ($self, $size, $type) = @_;
-
-    my $type_symbol = type_symbol($type);
-    $size = ref $size eq 'CUDA::DeviceAPI::Array' ? $size->size : $size;
-
-    my $elem = size2elem($size);
-    my $binary_data = pack("$type_symbol*", (0) x $elem);
-    my $addr = CUDA::DeviceAPI::_malloc($self->{context}, $elem * bit_length($type_symbol));
-
-    $self->{addr}->{$addr} = 1;
-
-    return +{
-        size => $size,
-        elem => $elem,
-        type => $type_symbol,
-        addr => $addr,
-    };
 }
 
 sub free {
@@ -123,8 +79,11 @@ sub destroy {
     my ($self) = @_;
 
     if ($self->{context}) {
-        for my $addr (grep { $self->{addr}->{$_} == 1 } keys %{$self->{addr}}) {
-            $self->free($addr);
+        for my $addr (keys %{$self->{addr}}) {
+            if (exists $self->{addr}->{$addr}) {
+                $self->free($addr);
+                delete $self->{addr}->{$addr};
+            }
         }
 
         CUDA::DeviceAPI::_destroy($self->{context});
@@ -135,18 +94,6 @@ sub destroy {
 sub DESTROY {
     my ($self) = @_;
     $self->destroy;
-}
-
-sub ceil {
-    my ($self, $n) = @_;
-    return int($n) == $n ? $n : int($n) + 1;
-}
-
-sub return {
-    my ($self, $src_ptr) = @_;
-    $self->transfer_d2h($src_ptr, \my $dst_val);
-
-    return array2ref($dst_val, $src_ptr->{type}, $src_ptr->{size});
 }
 
 1;

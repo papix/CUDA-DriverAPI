@@ -36,7 +36,6 @@ CODE:
 OUTPUT:
     RETVAL
 
-
 SV *
 _malloc(SV * ctx, SV * data_SV)
 CODE:
@@ -56,7 +55,6 @@ CODE:
 OUTPUT:
     RETVAL
 
-
 void
 _transfer_h2d(SV * ctx, SV * src_SV, SV * dst_SV)
 CODE:
@@ -72,7 +70,6 @@ CODE:
     }
 }
 
-
 void
 _transfer_d2h(SV * ctx, SV * src_SV, SV * dst_SV)
 CODE:
@@ -87,7 +84,6 @@ CODE:
         croak("Error at transfer device to host (%04d)", err);
     }
 }
-
 
 void
 _run(SV * ctx, ptx_path, function, AV * args, AV * config)
@@ -144,7 +140,6 @@ CODE:
 
     cuCtxSynchronize();
 }
-
 
 void
 _free(SV * ctx, SV * data_SV)
