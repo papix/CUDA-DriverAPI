@@ -2,7 +2,6 @@ use strict;
 use Test::More;
 
 use CUDA::DeviceAPI;
-use CUDA::DeviceAPI::Array;
 use File::Spec;
 use Cwd;
 
