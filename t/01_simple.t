@@ -1,5 +1,5 @@
 use strict;
-use Test::More;
+use Test::More tests => 2;
 
 use CUDA::DeviceAPI;
 use File::Spec;
@@ -18,22 +18,31 @@ my $dev_ptr_3 = $ctx->malloc($host_data);
 $ctx->transfer_h2d($host_data, $dev_ptr_1);
 $ctx->transfer_h2d($host_data, $dev_ptr_2);
 
-$ctx->run($path, 'kernel_sum', [
-    $dev_ptr_1 => 'p',
-    $dev_ptr_2 => 'p',
-    $dev_ptr_3 => 'p',
-    $max       => 'i',
-], [
-    $max
-]
-);
+subtest 'Run successfully' => sub {
+    $ctx->run($path, 'kernel_sum', [
+        $dev_ptr_1 => 'p',
+        $dev_ptr_2 => 'p',
+        $dev_ptr_3 => 'p',
+        $max       => 'i',
+    ], [
+        $max
+    ]
+    );
 
-my $result = pack('f*', (0) x $max);
-$ctx->transfer_d2h($dev_ptr_3, \$result);
+    my $result = pack('f*', (0) x $max);
+    $ctx->transfer_d2h($dev_ptr_3, \$result);
 
-my @results = unpack('f*', $result);
+    my @results = unpack('f*', $result);
 
-is_deeply(\@results, [map { $_ * 2 } 1..$max]);
+    is_deeply(\@results, [map { $_ * 2 } 1..$max]);
+};
+
+subtest 'Run failed' => sub {
+    eval {
+        $ctx->run($path, 'kernel_sum', [ $dev_ptr_1 ], [ $max ]);
+    };
+    like $@, qr/Error!/;
+};
 
 done_testing;
 
