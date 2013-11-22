@@ -1,14 +1,14 @@
 # NAME
 
-CUDA::DeviceAPI - It's new $module
+CUDA::DriverAPI - It's new $module
 
 # SYNOPSIS
 
-    use CUDA::DeviceAPI;
+    use CUDA::DriverAPI;
 
 # DESCRIPTION
 
-CUDA::DeviceAPI is ...
+CUDA::DriverAPI is ...
 
 # LICENSE
 

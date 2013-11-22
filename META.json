@@ -12,7 +12,7 @@
       "url" : "http://search.cpan.org/perldoc?CPAN::Meta::Spec",
       "version" : "2"
    },
-   "name" : "CUDA-DeviceAPI",
+   "name" : "CUDA-DriverAPI",
    "no_index" : {
       "directory" : [
          "t",
@@ -66,5 +66,8 @@
          "web" : "https://github.com/papix/CUDA-DeviceAPI"
       }
    },
-   "version" : "0.01"
+   "version" : "0.01",
+   "x_contributors" : [
+      "boolfool <boolfool0130@gmail.com>"
+   ]
 }

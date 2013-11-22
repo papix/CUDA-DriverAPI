@@ -23,8 +23,8 @@ my %args = (
         'Module::Build' => 0.38,
     },
 
-    name            => 'CUDA-DeviceAPI',
-    module_name     => 'CUDA::DeviceAPI',
+    name            => 'CUDA-DriverAPI',
+    module_name     => 'CUDA::DriverAPI',
     allow_pureperl => 0,
 
     script_files => [glob('script/*'), glob('bin/*')],

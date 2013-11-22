@@ -48,7 +48,7 @@ CODE:
 
     CUresult err = cuMemAlloc(&dev_ptr, data_len);
     if (err != CUDA_SUCCESS) {
-        croak("ERROR!\n");
+        croak("Error at memory allocation (%04d)", err);
     }
     RETVAL = newSViv(PTR2IV(dev_ptr));
 }

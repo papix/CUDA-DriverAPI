@@ -4,7 +4,7 @@
 	// nvopencc 4.1 built on 2012-09-21
 
 	//-----------------------------------------------------------
-	// Compiling /tmp/tmpxft_00001287_00000000-14_01_simple.cpp3.i (/tmp/ccBI#.5I1oKp)
+	// Compiling /tmp/tmpxft_00001287_00000000-18_02_float.cpp3.i (/tmp/ccBI#.66MYjS)
 	//-----------------------------------------------------------
 
 	//-----------------------------------------------------------
@@ -17,7 +17,7 @@
 	//-----------------------------------------------------------
 
 	.file	1	"<command-line>"
-	.file	2	"/tmp/tmpxft_00001287_00000000-13_01_simple.cudafe2.gpu"
+	.file	2	"/tmp/tmpxft_00001287_00000000-17_02_float.cudafe2.gpu"
 	.file	3	"/usr/lib/gcc/x86_64-linux-gnu/4.6/include/stddef.h"
 	.file	4	"/usr/include/crt/device_runtime.h"
 	.file	5	"/usr/include/host_defines.h"
@@ -29,7 +29,7 @@
 	.file	11	"/usr/include/vector_types.h"
 	.file	12	"/usr/include/device_launch_parameters.h"
 	.file	13	"/usr/include/crt/storage_class.h"
-	.file	14	"01_simple.cu"
+	.file	14	"02_float.cu"
 	.file	15	"/usr/include/common_functions.h"
 	.file	16	"/usr/include/math_functions.h"
 	.file	17	"/usr/include/math_constants.h"
@@ -53,11 +53,12 @@
 		.param .u64 __cudaparm_kernel_sum_a,
 		.param .u64 __cudaparm_kernel_sum_b,
 		.param .u64 __cudaparm_kernel_sum_c,
+		.param .u64 __cudaparm_kernel_sum_add,
 		.param .u64 __cudaparm_kernel_sum_i)
 	{
 	.reg .u32 %r<4>;
-	.reg .u64 %rd<11>;
-	.reg .f32 %f<5>;
+	.reg .u64 %rd<12>;
+	.reg .f32 %f<7>;
 	.reg .pred %p<3>;
 	.loc	14	1	0
 $LDWbegin_kernel_sum:
@@ -69,16 +70,19 @@ $LDWbegin_kernel_sum:
 	.loc	14	5	0
 	cvt.s64.s32 	%rd2, %r1;
 	mul.wide.s32 	%rd3, %r1, 4;
-	ld.param.u64 	%rd4, [__cudaparm_kernel_sum_a];
-	add.u64 	%rd5, %rd4, %rd3;
-	ld.global.f32 	%f1, [%rd5+0];
-	ld.param.u64 	%rd6, [__cudaparm_kernel_sum_b];
-	add.u64 	%rd7, %rd6, %rd3;
-	ld.global.f32 	%f2, [%rd7+0];
-	add.f32 	%f3, %f1, %f2;
-	ld.param.u64 	%rd8, [__cudaparm_kernel_sum_c];
-	add.u64 	%rd9, %rd8, %rd3;
-	st.global.f32 	[%rd9+0], %f3;
+	ld.param.u64 	%rd4, [__cudaparm_kernel_sum_add];
+	ld.global.f32 	%f1, [%rd4+0];
+	ld.param.u64 	%rd5, [__cudaparm_kernel_sum_a];
+	add.u64 	%rd6, %rd5, %rd3;
+	ld.global.f32 	%f2, [%rd6+0];
+	ld.param.u64 	%rd7, [__cudaparm_kernel_sum_b];
+	add.u64 	%rd8, %rd7, %rd3;
+	ld.global.f32 	%f3, [%rd8+0];
+	add.f32 	%f4, %f2, %f3;
+	add.f32 	%f5, %f1, %f4;
+	ld.param.u64 	%rd9, [__cudaparm_kernel_sum_c];
+	add.u64 	%rd10, %rd9, %rd3;
+	st.global.f32 	[%rd10+0], %f5;
 $Lt_0_1026:
 	.loc	14	7	0
 	exit;
