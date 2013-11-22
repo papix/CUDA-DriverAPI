@@ -1,4 +1,4 @@
-package CUDA::DeviceAPI;
+package CUDA::DriverAPI;
 use 5.008005;
 use strict;
 use warnings;
@@ -9,31 +9,24 @@ our $VERSION = "0.01";
 use XSLoader;
 XSLoader::load(__PACKAGE__, $VERSION);
 
-my %VARIABLE_TYPE = (
-    'p' => 0,
-    'i' => 1,
-    'f' => 2,
-    'd' => 3,
-);
-
 sub new {
     my ($class, %argv) = @_;
 
     bless {
-        context => CUDA::DeviceAPI::_init(),
+        context => CUDA::DriverAPI::_init(),
         addr    => {},
     }, $class;
 }
 
 sub init {
     my ($self) = @_;
-    $self->{context} ||= CUDA::DeviceAPI::_init();
+    $self->{context} ||= CUDA::DriverAPI::_init();
 }
 
 sub malloc {
     my ($self, $size) = @_;
 
-    my $addr = CUDA::DeviceAPI::_malloc($self->{context}, $size);
+    my $addr = CUDA::DriverAPI::_malloc($self->{context}, $size);
     $self->{addr}->{$addr} = 1;
 
     return $addr;
@@ -41,25 +34,17 @@ sub malloc {
 
 sub transfer_h2d {
     my ($self, $src_var, $dst_ptr) = @_;
-    CUDA::DeviceAPI::_transfer_h2d($self->{context}, $src_var, $dst_ptr);
+    CUDA::DriverAPI::_transfer_h2d($self->{context}, $src_var, $dst_ptr);
 }
 
 sub transfer_d2h {
     my ($self, $src_ptr, $dst_var) = @_;
-    CUDA::DeviceAPI::_transfer_d2h($self->{context}, $src_ptr, ${$dst_var});
+    CUDA::DriverAPI::_transfer_d2h($self->{context}, $src_ptr, ${$dst_var});
 }
 
 sub run {
     my ($self, $ptx_path, $function, $args, $config) = @_;
-
-    Carp::croak("Error!") if @{$args} % 2 != 0;
-    for my $i (0 .. $#{$args}) {
-        if ($i % 2 == 1) {
-            $args->[$i] = $VARIABLE_TYPE{$args->[$i]};
-        }
-    }
-
-    CUDA::DeviceAPI::_run($self->{context}, $ptx_path, $function, $args, $config);
+    CUDA::DriverAPI::_run($self->{context}, $ptx_path, $function, $args, $config);
 }
 
 sub free {
@@ -67,7 +52,7 @@ sub free {
 
     Carp::croak("Not exist: $addr") unless exists $self->{addr}->{$addr};
     if ($self->{addr}->{$addr}) {
-        CUDA::DeviceAPI::_free($self->{context}, $addr);
+        CUDA::DriverAPI::_free($self->{context}, $addr);
         delete $self->{addr}->{$addr};
         return 1;
     } else {
@@ -78,17 +63,18 @@ sub free {
 sub destroy {
     my ($self) = @_;
 
-    if ($self->{context}) {
-        for my $addr (keys %{$self->{addr}}) {
-            if (exists $self->{addr}->{$addr}) {
-                $self->free($addr);
-                delete $self->{addr}->{$addr};
-            }
-        }
+    return 0 unless $self->{context};
 
-        CUDA::DeviceAPI::_destroy($self->{context});
-        delete $self->{context};
+    for my $addr (keys %{$self->{addr}}) {
+        if (exists $self->{addr}->{$addr}) {
+            $self->free($addr);
+            delete $self->{addr}->{$addr};
+        }
     }
+
+    CUDA::DriverAPI::_destroy($self->{context});
+    delete $self->{context};
+    return 1;
 }
 
 sub DESTROY {
@@ -104,15 +90,15 @@ __END__
 
 =head1 NAME
 
-CUDA::DeviceAPI - It's new $module
+CUDA::DriverAPI - It's new $module
 
 =head1 SYNOPSIS
 
-    use CUDA::DeviceAPI;
+    use CUDA::DriverAPI;
 
 =head1 DESCRIPTION
 
-CUDA::DeviceAPI is ...
+CUDA::DriverAPI is ...
 
 =head1 LICENSE
 

@@ -14,7 +14,7 @@ extern "C" {
 #define NEED_newSVpvn_flags
 #include "ppport.h"
 
-MODULE = CUDA::DeviceAPI    PACKAGE = CUDA::DeviceAPI
+MODULE = CUDA::DriverAPI    PACKAGE = CUDA::DriverAPI
 
 PROTOTYPES: DISABLE
 
@@ -96,19 +96,12 @@ CODE:
 
     int i;
     int args_size = av_len(args);
-    void * args_ptr[args_size / 2];
-    void * kernel_param[args_size / 2];
+    void * args_ptr[args_size];
+    void * kernel_param[args_size];
 
-    for (i = 0; i <= args_size / 2; i++) {
-        int type = SvIV((SV *)*av_fetch(args, i * 2 + 1, FALSE));
-        SV * arg = *av_fetch(args, i * 2, FALSE);
-        if (type == 0) {
-            args_ptr[i] = (void *) INT2PTR(CUdeviceptr, SvIV(arg));
-        } else if (type == 1) {
-            args_ptr[i] = (void *) SvIV(arg);
-        } else {
-            croak("Error at run (translate ptr)");
-        }
+    for (i = 0; i <= args_size; i++) {
+        SV * arg = *av_fetch(args, i, FALSE);
+        args_ptr[i] = (void *) INT2PTR(CUdeviceptr, SvIV(arg));
         kernel_param[i] = &args_ptr[i];
     }
 
