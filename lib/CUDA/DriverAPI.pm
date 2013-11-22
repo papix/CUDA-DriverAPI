@@ -90,15 +90,41 @@ __END__
 
 =head1 NAME
 
-CUDA::DriverAPI - It's new $module
+CUDA::DriverAPI - CUDA bindings for Perl using CUDA Driver API
 
 =head1 SYNOPSIS
 
     use CUDA::DriverAPI;
+    use File::Spec;
+
+    my $ctx = CUDA::DriverAPI->new();
+    my $path = File::Spec->catfile(qw/ path to ptx file /);
+    
+    my $max = 10;
+    my $max_b  = pack('i', $max);
+    my $host_b = pack('f*', 1 .. $max);
+
+    my $ptr1 = $ctx->malloc($host_b);
+    my $ptr2 = $ctx->malloc($host_b);
+    my $ptr3 = $ctx->malloc($host_b);
+    my $ptr4 = $ctx->malloc($max_b);
+
+    $ctx->transfer_h2d($host_b, $ptr1);
+    $ctx->transfer_h2d($host_b, $ptr2);
+    $ctx->transfer_h2d($max_b, $ptr4);
+
+    $ctx->run($path, [ $ptr1, $ptr2, $ptr3, $ptr4 ], [ $max ]);
+
+    my $result = $host_b;
+    $ctx->transfer_d2h($ptr3, \$result);
 
 =head1 DESCRIPTION
 
-CUDA::DriverAPI is ...
+CUDA::DriverAPI is CUDA bindings module for Perl.
+
+=head1 DEPENDENCIES
+
+This module requiers CUDA 4.0.
 
 =head1 LICENSE
 
