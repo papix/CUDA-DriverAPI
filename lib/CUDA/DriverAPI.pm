@@ -48,10 +48,11 @@ sub buffer ($self, %args) {
 
     $size //= _byte_length($data);
     Carp::croak("Invalid buffer size: $size") unless $size =~ /\A[0-9]+\z/;
+    $size += 0;
 
     # The driver allocates nothing for 0 bytes; give an empty buffer one byte
     # that no method can reach.
-    my $ptr = $self->_alloc($size || 1);
+    my $ptr = $self->_alloc($size == 0 ? 1 : $size);
     $self->{allocations}{$ptr} = $size;
     my $buffer = CUDA::DriverAPI::Buffer->_new($self, $ptr, $size, $self->_own($ptr));
     $buffer->write($data) if defined $data;
@@ -111,6 +112,14 @@ sub transfer_d2h ($self, $src_ptr, $dst = undef) {
 }
 
 sub run ($self, $code, $function, $args, $config = []) {
+    Carp::croak("Too many launch config values (" . @$config . " > 7)") if @$config > 7;
+    for my $i (0 .. $#$config) {
+        my $value = $config->[$i];
+        my $min   = $i < 6 ? 1 : 0;    # grid and block sizes, then sharedMemBytes
+        Carp::croak("Invalid launch config value: " . ($value // 'undef'))
+            unless defined $value && $value =~ /\A[0-9]+\z/ && $value >= $min && $value <= 4294967295;
+    }
+
     my $library = $self->_resolve_library($code);
     my ($func, $sizes) = @{
         $self->{functions}{$library}{$function} //= do {
@@ -118,11 +127,6 @@ sub run ($self, $code, $function, $args, $config = []) {
             [ $func, _param_sizes($self->_context, $func) ];
         }
     };
-    Carp::croak("Too many launch config values (" . @$config . " > 7)") if @$config > 7;
-    for my $value (@$config) {
-        Carp::croak("Invalid launch config value: " . ($value // 'undef'))
-            unless defined $value && $value =~ /\A[0-9]+\z/ && $value <= 4294967295;
-    }
     my @packed = map { $self->_pack_arg($_) } @$args;
     _check_args($function, \@packed, $sizes) if $sizes;
     _launch($self->_context, $func, \@packed, $config);
@@ -437,8 +441,8 @@ then makes the kernel read beyond it.
 
 C<@config> is
 C<(gridDimX, gridDimY, gridDimZ, blockDimX, blockDimY, blockDimZ, sharedMemBytes)>;
-omitted values default to C<(1, 1, 1, 1, 1, 1, 0)>. Each value must be an
-integer from 0 to 4294967295.
+omitted values default to C<(1, 1, 1, 1, 1, 1, 0)>. The sizes must be integers
+from 1 to 4294967295, and C<sharedMemBytes> from 0.
 
 The launch is asynchronous: C<run> returns without waiting for the kernel.
 Reading memory back, freeing it, C<destroy> and C<synchronize> wait for it, and

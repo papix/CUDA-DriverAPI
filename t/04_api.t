@@ -50,7 +50,7 @@ subtest 'invalid kernel arguments' => sub {
 
 subtest 'launch config values are checked' => sub {
     my $buffer = $ctx->buffer(size => 4);
-    for my $bad (-1, 4294967296, 1.5, 'x', undef) {
+    for my $bad (0, -1, 4294967296, 1.5, 'x', undef) {
         like dies {
             $ctx->run($path, 'kernel_axpy', [ [ f32 => 2 ], $buffer, $buffer, [ i32 => 1 ] ], [ 1, 1, 1, $bad ])
         }, qr/Invalid launch config value: @{[ $bad \/\/ 'undef' ]}/;

@@ -23,6 +23,8 @@ subtest 'create from data or size' => sub {
     like dies { $ctx->buffer(data => 'x', size => 1) }, qr/Specify exactly one of data or size/;
     like dies { $ctx->buffer(size => '1.5') },          qr/Invalid buffer size: 1.5/;
     like dies { $ctx->buffer(size => -1) },             qr/Invalid buffer size: -1/;
+    is $ctx->buffer(size => '00')->size, 0, 'leading zeros';
+    is $ctx->buffer(size => '007')->size, 7;
 };
 
 subtest 'empty buffers' => sub {
