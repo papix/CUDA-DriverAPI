@@ -88,16 +88,17 @@ load_driver(pTHX)
      * normally knows through ld.so.conf; try it directly as a fallback. */
     lib = dlopen("libcuda.so.1", RTLD_NOW | RTLD_LOCAL);
     if (!lib) {
-        char *error = savepv(dlerror());
+        SV *error = sv_2mortal(newSVpv(dlerror(), 0));
 
-        SAVEFREEPV(error);
         lib = dlopen("/usr/lib/wsl/lib/libcuda.so.1", RTLD_NOW | RTLD_LOCAL);
         if (!lib) {
             /* Report the WSL attempt too unless the file is simply absent. */
+            const char *wsl_error = dlerror();
+
             if (access("/usr/lib/wsl/lib/libcuda.so.1", F_OK) == 0) {
-                croak("CUDA driver not found: %s; %s", error, dlerror());
+                croak("CUDA driver not found: %" SVf "; %s", SVfARG(error), wsl_error);
             }
-            croak("CUDA driver not found: %s", error);
+            croak("CUDA driver not found: %" SVf, SVfARG(error));
         }
     }
     get_version = (__typeof__(get_version))dlsym(lib, "cuDriverGetVersion");
@@ -185,9 +186,11 @@ new_buffer(pTHX_ size_t len)
 
 /* Every entry point makes the object's context current, so that the calling
  * thread always operates on the right device. */
-#define SET_CONTEXT(ctx_sv) \
-    load_driver(aTHX); \
-    CHECK_CU(CU(cuCtxSetCurrent)(INT2PTR(CUcontext, SvIV(ctx_sv))), "CtxSetCurrent")
+#define SET_CONTEXT(ctx_sv)                                                              \
+    do {                                                                                 \
+        load_driver(aTHX);                                                               \
+        CHECK_CU(CU(cuCtxSetCurrent)(INT2PTR(CUcontext, SvIV(ctx_sv))), "CtxSetCurrent"); \
+    } while (0)
 
 /* Croaks with the same message as the Perl side when a transfer would run past
  * the end of a tracked allocation. */
