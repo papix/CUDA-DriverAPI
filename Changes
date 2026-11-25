@@ -1,6 +1,36 @@
-Revision history for Perl extension CUDA-DeviceAPI
+Revision history for Perl extension CUDA-DriverAPI
 
 {{$NEXT}}
+
+    - First release to CPAN
+    - Require Perl 5.40 and CUDA 12.0 or later, including NVRTC
+    - Use the device primary context and the cuLibrary* API to load kernels
+    - Add compile() to build CUDA C++ source at run time with NVRTC
+    - Add buffer() returning CUDA::DriverAPI::Buffer, freed automatically
+    - Add Buffer->write_array/read_array to convert nested arrays in C
+    - Add Buffer->fill (cuMemsetD8Async)
+    - Add load() for compiled images and compute_capability()
+    - Add `device` option to new()
+    - run() launches asynchronously; add synchronize()
+    - run() takes scalar kernel arguments by value ([i32 => 10], [f32 => 1.5], ...)
+    - Cache loaded files and kernel functions per object
+    - transfer_d2h($ptr [, $size]) returns the bytes
+    - Bounds-check transfers against the allocation size
+    - Report CUDA errors with their names and descriptions
+    - Do not clone objects into ithreads (CLONE_SKIP)
+    - destroy() releases everything even when a step fails
+    - Fix out-of-bounds write when passing kernel arguments
+    - Find the CUDA Toolkit without configuration (nvcc on PATH,
+      /usr/local/cuda, /usr/local/cuda-X.Y, /opt/cuda, $CONDA_PREFIX, /usr);
+      CUDA_HOME/CUDA_PATH pick a specific one. Without a toolkit, Build.PL
+      stops with "OS unsupported"
+    - compile() finds the toolkit headers (cuda_fp16.h, cuda/std/...) without
+      options
+    - Tests use Test2::V0 and skip when no CUDA device is available
+    - Add Perl::Critic author test
+    - Replace Travis CI with GitHub Actions
+
+0.01 2013-11-22 (not released to CPAN)
 
     - original version
 

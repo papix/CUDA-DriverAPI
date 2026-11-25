@@ -1,0 +1,166 @@
+package CUDA::DriverAPI::Buffer;
+use v5.40;
+use Carp ();
+
+our $VERSION = "0.02";
+
+# Created by CUDA::DriverAPI->buffer. Holds a reference to its context object
+# so that the context outlives every buffer allocated from it, and the token
+# that tells its allocation apart from a later one at the same address.
+sub _new ($class, $ctx, $ptr, $size, $token) {
+    return bless { ctx => $ctx, ptr => $ptr, size => $size, token => $token }, $class;
+}
+
+sub ptr  ($self) { return $self->{ptr} }
+sub size ($self) { return $self->{size} }
+
+sub write ($self, $data, %args) {
+    my $offset = $args{offset} // 0;
+    $self->_check_range($offset, CUDA::DriverAPI::_byte_length($data));
+    $self->_ctx->transfer_h2d($data, $self->{ptr} + $offset);
+    return $self;
+}
+
+sub read ($self, %args) {
+    my $offset = $args{offset} // 0;
+    my $size   = $args{size}   // ($offset =~ /\A[0-9]+\z/ && $offset < $self->{size} ? $self->{size} - $offset : 0);
+    $self->_check_range($offset, $size);
+    return $self->_ctx->transfer_d2h($self->{ptr} + $offset, $size);
+}
+
+sub write_array ($self, $array, %args) {
+    my $type = $args{type} // Carp::croak("type is required");
+    my $rank = $args{rank} // 1;
+    Carp::croak("Invalid rank: $rank (expected 1 to 3)") unless $rank =~ /\A[1-3]\z/;
+
+    return CUDA::DriverAPI::_write_array($self->_ctx->_context, $self->{ptr}, $self->{size}, $array, $type, $rank);
+}
+
+sub read_array ($self, %args) {
+    my $type = $args{type} // Carp::croak("type is required");
+    my $dims = $args{dims} // Carp::croak("dims is required");
+    Carp::croak("dims must be an array reference of 1 to 3 sizes")
+        unless ref $dims eq 'ARRAY' && @$dims >= 1 && @$dims <= 3;
+    for my $dim (@$dims) {
+        Carp::croak("Invalid dimension: " . ($dim // 'undef')) unless defined $dim && $dim =~ /\A[0-9]+\z/;
+    }
+
+    return CUDA::DriverAPI::_read_array($self->_ctx->_context, $self->{ptr}, $self->{size}, $type, $dims, $args{into});
+}
+
+sub fill ($self, $byte = 0) {
+    Carp::croak("Invalid byte: $byte") unless $byte =~ /\A[0-9]+\z/ && $byte <= 255;
+    CUDA::DriverAPI::_memset($self->_ctx->_context, $self->{ptr}, $byte, $self->{size});
+    return $self;
+}
+
+sub free ($self) {
+    my $ctx = delete $self->{ctx} or return false;
+    $ctx->_release_allocation($self->{ptr}, $self->{token});
+    return true;
+}
+
+sub DESTROY ($self) {
+    $self->free;
+    return;
+}
+
+sub CLONE_SKIP { return 1 }
+
+# The context, as long as this buffer's allocation is still alive: it is gone
+# after free, after $ctx->free($buffer->ptr), and after $ctx->destroy.
+sub _ctx ($self) {
+    my $ctx = $self->{ctx};
+    Carp::croak("The buffer has already been freed") unless $ctx && $ctx->_owns($self->{ptr}, $self->{token});
+    return $ctx;
+}
+
+sub _check_range ($self, $offset, $size) {
+    for my $value ($offset, $size) {
+        Carp::croak("Invalid offset or size: $value") unless $value =~ /\A[0-9]+\z/;
+    }
+    Carp::croak("Range $offset..@{[ $offset + $size ]} is outside the buffer of $self->{size} bytes")
+        if $offset + $size > $self->{size};
+    return;
+}
+
+1;
+
+__END__
+
+=encoding utf-8
+
+=head1 NAME
+
+CUDA::DriverAPI::Buffer - Device memory freed automatically
+
+=head1 SYNOPSIS
+
+    my $buffer = $ctx->buffer(size => 4 * 1024);
+    $buffer->write(pack('f*', 1 .. 1024));
+    my @values = unpack('f*', $buffer->read);
+
+=head1 DESCRIPTION
+
+A block of device memory allocated by L<CUDA::DriverAPI/buffer>. It is freed
+when the object goes out of scope, and can be passed directly as a kernel
+argument to L<CUDA::DriverAPI/run>.
+
+=head1 METHODS
+
+=over 4
+
+=item C<< $buffer->ptr >>
+
+The device pointer.
+
+=item C<< $buffer->size >>
+
+The size in bytes.
+
+=item C<< $buffer->write($bytes, offset => $offset) >>
+
+Copies C<$bytes> to the buffer, starting C<$offset> bytes in (default: 0).
+Returns the buffer.
+
+=item C<< $buffer->read(offset => $offset, size => $size) >>
+
+Returns C<$size> bytes copied from the buffer, starting C<$offset> bytes in.
+By default it reads everything from C<$offset> (default: 0) to the end.
+
+=item C<< $buffer->write_array($array_ref, type => $type, rank => $rank) >>
+
+Converts a rectangular nested array of depth C<$rank> (1 to 3, default 1) to
+elements of C<$type> in row-major order and copies them to the start of the
+buffer. The conversion runs in C, without building an intermediate string in
+Perl. Returns the dimensions as an array reference, e.g. C<[ 1024, 1024 ]>.
+
+C<$type> is one of C<i8>, C<u8>, C<i16>, C<u16>, C<i32>, C<u32>, C<i64>,
+C<u64>, C<f32> and C<f64>. C<undef> elements count as 0. It croaks, naming the
+index, on a row whose length differs from the first row's, on a row that is
+not an array reference, and on a leaf that is a reference.
+
+=item C<< $buffer->read_array(type => $type, dims => \@dims) >>
+
+=item C<< $buffer->read_array(type => $type, dims => \@dims, into => $array_ref) >>
+
+Copies C<product(@dims)> elements of C<$type> from the start of the buffer
+and returns them as a nested array of shape C<@dims> (1 to 3 sizes). With
+C<into>, it fills the given array in place instead, reusing its rows and
+scalars and resizing every level to C<@dims>, and returns C<$array_ref>.
+
+=item C<< $buffer->fill($byte) >>
+
+Sets every byte of the buffer to C<$byte> (0 to 255, default 0) and returns
+the buffer. Like L<CUDA::DriverAPI/run>, it is asynchronous and ordered
+before later kernels and reads.
+
+=item C<< $buffer->free >>
+
+Frees the memory now instead of when the object goes out of scope.
+
+=back
+
+Reads and writes croak when the range does not fit in the buffer.
+
+=cut

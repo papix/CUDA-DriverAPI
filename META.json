@@ -1,10 +1,10 @@
 {
-   "abstract" : "It's new $module",
+   "abstract" : "CUDA bindings for Perl using CUDA Driver API",
    "author" : [
       "papix <mail@papix.net>"
    ],
    "dynamic_config" : 0,
-   "generated_by" : "Minilla/v0.8.2, CPAN::Meta::Converter version 2.132830",
+   "generated_by" : "Minilla/v3.3.2",
    "license" : [
       "perl_5"
    ],
@@ -28,46 +28,52 @@
    "prereqs" : {
       "configure" : {
          "requires" : {
-            "CPAN::Meta" : "0",
-            "CPAN::Meta::Prereqs" : "0",
-            "Module::Build" : "0.38"
+            "Module::Build" : "0.4234",
+            "Module::Build::XSUtil" : "0.19"
          }
       },
       "develop" : {
          "requires" : {
-            "Test::CPAN::Meta" : "0",
-            "Test::MinimumVersion" : "0.10108",
-            "Test::Pod" : "1.41",
-            "Test::Spellunker" : "v0.2.7"
+            "Minilla" : "v3.3.2",
+            "Perl::Critic" : "1.156",
+            "Perl::Tidy" : "20260826",
+            "Test::CPAN::Meta" : "0.25",
+            "Test::MinimumVersion::Fast" : "0.04",
+            "Test::PAUSE::Permissions" : "0.07",
+            "Test::Perl::Critic" : "1.04",
+            "Test::Pod" : "1.52",
+            "Test::Spellunker" : "v0.4.0"
          }
       },
       "runtime" : {
          "requires" : {
             "Carp" : "0",
             "XSLoader" : "0",
-            "perl" : "5.008005"
+            "perl" : "v5.40.0"
          }
       },
       "test" : {
          "requires" : {
-            "Test::More" : "0.98"
+            "Test2::V0" : "0"
          }
       }
    },
    "release_status" : "unstable",
    "resources" : {
       "bugtracker" : {
-         "web" : "https://github.com/papix/CUDA-DeviceAPI/issues"
+         "web" : "https://github.com/papix/CUDA-DriverAPI/issues"
       },
-      "homepage" : "https://github.com/papix/CUDA-DeviceAPI",
+      "homepage" : "https://github.com/papix/CUDA-DriverAPI",
       "repository" : {
          "type" : "git",
-         "url" : "git://github.com/papix/CUDA-DeviceAPI.git",
-         "web" : "https://github.com/papix/CUDA-DeviceAPI"
+         "url" : "https://github.com/papix/CUDA-DriverAPI.git",
+         "web" : "https://github.com/papix/CUDA-DriverAPI"
       }
    },
-   "version" : "0.01",
+   "version" : "0.02",
    "x_contributors" : [
       "boolfool <boolfool0130@gmail.com>"
-   ]
+   ],
+   "x_serialization_backend" : "JSON::PP version 4.16",
+   "x_static_install" : 0
 }

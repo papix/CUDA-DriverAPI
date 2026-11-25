@@ -1,17 +1,102 @@
 package builder::MyBuilder;
-use strict;
-use warnings FATAL => 'all';
-use 5.008008;
-use base 'Module::Build::XSUtil';
+use v5.40;
+use parent 'Module::Build::XSUtil';
+use File::Basename qw(dirname);
+use File::Spec;
 
-sub new {
-    my ( $self, %args ) = @_;
-    $self->SUPER::new(
+# Finds the CUDA Toolkit that provides cuda.h, nvrtc.h and libnvrtc, without
+# configuration where possible (see cuda_home_candidates). libcuda itself ships
+# with the NVIDIA driver; on WSL it lives in /usr/lib/wsl/lib, and the toolkit
+# stub is only a link-time fallback.
+sub new ($class, %args) {
+    my $cuda_home = find_cuda_home(cuda_home_candidates());
+
+    # A wrong explicit setting is a configuration error, not a missing platform.
+    for my $var (grep { length($ENV{$_} // '') } qw(CUDA_HOME CUDA_PATH)) {
+        die "$var=$ENV{$var} does not contain include/cuda.h and include/nvrtc.h of a CUDA Toolkit.\n"
+            unless defined $cuda_home;
+        last;
+    }
+
+    # "OS unsupported" makes CPAN Testers report NA instead of FAIL on machines
+    # without the toolkit.
+    die "OS unsupported: the CUDA Toolkit 12.0 or later with NVRTC was not found "
+        . "(looked for include/cuda.h and include/nvrtc.h in "
+        . join(', ', cuda_home_candidates())
+        . "). Install it, or set CUDA_HOME to its directory.\n"
+        unless defined $cuda_home;
+
+    # A toolkit installed into the system prefix (distribution packages) is on
+    # the default include and library paths; adding them again only reorders
+    # the system search order.
+    my $system           = $cuda_home eq '/usr';
+    my @include_dirs     = $system ? () : ("$cuda_home/include");
+    my @toolkit_lib_dirs = $system ? () : grep { -d } ("$cuda_home/lib64", "$cuda_home/lib");
+    my @stub_dirs        = grep { -d } map { "$_/stubs" } $system ? glob('/usr/lib/*-linux-gnu') : @toolkit_lib_dirs;
+    my @driver_lib_dirs  = (grep({ -d } '/usr/lib/wsl/lib'), @stub_dirs);
+
+    my @search_flags = map { "-L$_" } @driver_lib_dirs, @toolkit_lib_dirs;
+    my @rpath_flags  = map { "-Wl,-rpath,$_" } @toolkit_lib_dirs;
+
+    print "Using the CUDA Toolkit in $cuda_home\n";
+    my $builder = $class->SUPER::new(
         %args,
-        extra_linker_flags => '-lcuda',
-        cc_warnings => 0,
-        config => { cc => 'gcc', ld => 'gcc' },
+        include_dirs       => [@include_dirs],
+        extra_linker_flags => [ @search_flags, @rpath_flags, '-lcuda', '-lnvrtc' ],
+        cc_warnings        => 0,
     );
+
+    # Saved in the generated CUDA::DriverAPI::ConfigData, so that compile()
+    # can let NVRTC find the toolkit headers (cuda_fp16.h, cuda/std/..., ...).
+    # For a system install, /usr/include also holds the host's C and C++
+    # headers, which would shadow NVRTC's built-in ones; pass only cccl there.
+    my $include            = "$cuda_home/include";
+    my @nvrtc_include_dirs = grep { -d } ($system ? () : $include), "$include/cccl";
+    $builder->config_data(cuda_home          => $cuda_home);
+    $builder->config_data(nvrtc_include_dirs => \@nvrtc_include_dirs);
+    return $builder;
+}
+
+# Where to look, in order. An explicit CUDA_HOME or CUDA_PATH is the only
+# candidate, so a wrong setting fails loudly instead of silently picking
+# another toolkit.
+sub cuda_home_candidates () {
+    for my $var (qw(CUDA_HOME CUDA_PATH)) {
+        return ($ENV{$var}) if length($ENV{$var} // '');
+    }
+
+    my @candidates;
+    if (my $nvcc = which('nvcc')) {
+        push @candidates, dirname(dirname($nvcc));    # <toolkit>/bin/nvcc
+    }
+    push @candidates, '/usr/local/cuda';
+    push @candidates, sort { version_of($b) <=> version_of($a) } glob('/usr/local/cuda-[0-9]*');
+    push @candidates, '/opt/cuda';    # Arch Linux
+    push @candidates, $ENV{CONDA_PREFIX} if length($ENV{CONDA_PREFIX} // '');
+    push @candidates, '/usr';    # distribution packages
+    my %seen;
+    return grep { !$seen{$_}++ } @candidates;
+}
+
+sub find_cuda_home (@candidates) {
+    for my $dir (@candidates) {
+        return $dir if -f "$dir/include/cuda.h" && -f "$dir/include/nvrtc.h";
+    }
+    return;
+}
+
+# /usr/local/cuda-13.3 => 13.003, for sorting the newest first.
+sub version_of ($dir) {
+    my ($major, $minor) = $dir =~ /cuda-(\d+)(?:\.(\d+))?\z/ or return 0;
+    return $major + ($minor // 0) / 1000;
+}
+
+sub which ($command) {
+    for my $dir (File::Spec->path) {
+        my $path = File::Spec->catfile($dir, $command);
+        return $path if -f $path && -x _;
+    }
+    return;
 }
 
 1;

@@ -1,0 +1,17 @@
+# Pre-commit hooks for prek or pre-commit (`prek install` / `pre-commit install`).
+# They use the tools on PATH: gitleaks and perltidy (Perl::Tidy from cpanfile).
+repos:
+  - repo: local
+    hooks:
+      - id: gitleaks
+        name: gitleaks (secrets in staged changes)
+        entry: gitleaks git --pre-commit --staged --redact --no-banner .
+        language: system
+        pass_filenames: false
+        always_run: true
+      - id: perltidy
+        name: perltidy --assert-tidy
+        entry: sh -c 'for f; do perltidy --profile=.perltidyrc --assert-tidy --standard-error-output --standard-output "$f" >/dev/null || exit 1; done' --
+        language: system
+        files: '\.(pm|pl|t)$'
+        exclude: '^Build\.PL$'
