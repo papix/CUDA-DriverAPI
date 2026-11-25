@@ -2,6 +2,9 @@ requires 'perl', '5.040000';
 requires 'Carp';
 requires 'XSLoader';
 
+# Optional: Buffer->write_array/read_array accept and return PDL ndarrays.
+recommends 'PDL', '2.106';
+
 on 'configure' => sub {
     requires 'Module::Build', '0.4234';
     requires 'Module::Build::XSUtil', '0.19';
@@ -13,6 +16,7 @@ on 'test' => sub {
 
 on 'develop' => sub {
     requires 'Minilla', 'v3.3.2';
+    requires 'PDL', '2.106';    # run t/09_pdl.t
     requires 'Perl::Critic', '1.156';
     requires 'Perl::Tidy', '20260826';
     requires 'Test::Perl::Critic', '1.04';

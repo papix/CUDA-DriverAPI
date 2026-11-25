@@ -8,7 +8,8 @@
   lookup); set `CUDA_HOME` only to pick a specific one. On WSL, install only
   the toolkit; `libcuda` comes from the Windows driver through
   `/usr/lib/wsl/lib`.
-- Dependencies, including the author tools:
+- Dependencies, including the author tools and the optional PDL (needed for
+  `t/09_pdl.t`; `t/10_without_pdl.t` checks the module also works without it):
 
   ```sh
   cpanm --with-configure --with-develop --installdeps .

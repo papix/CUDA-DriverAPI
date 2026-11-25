@@ -40,6 +40,16 @@ my @cases = (
     [ 'write("\0" x size)' => sub { $buffer->write("\0" x (4 * $n * $n)) } ],
 );
 
+# The same transfers with ndarrays, when PDL is installed.
+if (eval { require PDL::Lite; 1 }) {
+    my $pdl      = PDL->pdl(PDL::float(), $matrix);
+    my $pdl_into = PDL->zeroes(PDL::float(), $n, $n);
+    my @dims     = (type => 'f32', dims => [ $n, $n ]);
+    push @cases, [ 'write_array(pdl)'     => sub { $buffer->write_array($pdl) } ];
+    push @cases, [ 'read_array(as pdl)'   => sub { $buffer->read_array(@dims, as   => 'pdl') } ];
+    push @cases, [ 'read_array(into pdl)' => sub { $buffer->read_array(@dims, into => $pdl_into) } ];
+}
+
 printf "%dx%d f32, median of %d runs\n", $n, $n, $repeats;
 for my $case (@cases) {
     my ($name, $code) = @$case;

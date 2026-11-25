@@ -147,6 +147,10 @@ reading waits for everything launched before it.
 - Use `write_array` and `read_array` for nested Perl arrays instead of
 `pack`/`unpack`: they convert in C and avoid an intermediate string. Pass
 `into` to `read_array` in loops to reuse the same Perl array.
+- If the data already lives in [PDL](https://metacpan.org/pod/PDL) ndarrays, pass them to the same methods:
+they are copied without any conversion. For 1024x1024 f32 on an RTX 4070,
+`write_array` takes about 0.25 ms with an ndarray against 2.3 ms with a
+nested array, and `read_array` into an ndarray 0.4 ms against 4.5 ms.
 - Use `fill` instead of writing a string of zeros to initialize output buffers.
 - NVRTC takes a noticeable time on the first compile. Save `$program->image`
 to a file keyed by `compute_capability` and `load` it in later runs; see
