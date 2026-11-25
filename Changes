@@ -27,6 +27,8 @@ Revision history for Perl extension CUDA-DriverAPI
     - compile() finds the toolkit headers (cuda_fp16.h, cuda/std/...) without
       options
     - Tests use Test2::V0 and skip when no CUDA device is available
+    - Add Perl::Critic author test
+    - Replace Travis CI with GitHub Actions
 
 0.01 2013-11-22 (not released to CPAN)
 

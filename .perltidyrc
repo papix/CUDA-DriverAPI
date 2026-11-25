@@ -1,0 +1,14 @@
+# perltidy profile; CI runs `perltidy --assert-tidy` with it.
+--maximum-line-length=120
+--indent-columns=4
+--continuation-indentation=4
+--vertical-tightness=0
+--paren-tightness=2
+--square-bracket-tightness=1
+--brace-tightness=1
+--nooutdent-labels
+--minimum-space-to-comment=4
+--novalign-side-comments
+--nooutdent-long-quotes
+--nospace-for-semicolon
+--character-encoding=utf8

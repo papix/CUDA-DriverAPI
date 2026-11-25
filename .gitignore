@@ -1,28 +1,52 @@
-/.build/
-/_build/
+# Build output (Module::Build, XS)
 /Build
-/blib
+/_build/
+/blib/
+/MYMETA.*
+lib/CUDA/DriverAPI.c
+*.o
+*.obj
+*.bs
+*.so
 
-/carton.lock
-/.carton/
+# Minilla
+/.build/
+/CUDA-DriverAPI-*
+
+# Local dependencies
 /local/
+/.carton/
+/carton.lock
+/cpanfile.snapshot
 
+# Profiling and coverage
 nytprof.out
 nytprof/
-
 cover_db/
 
+# Compiled kernels and caches outside the tracked test PTX
+*.cubin
+*.fatbin
+
+# Secrets and machine-local configuration: never commit these
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+.netrc
+.pause
+.pause-*
+CLAUDE.local.md
+.claude/settings.local.json
+.perl-version
+
+# Editors and OS
 *.bak
 *.old
 *~
 *.swp
-*.o
-*.obj
-
-!LICENSE
-
-MYMETA.*
-
-/CUDA-DeviceAPI-*
-lib/CUDA/DeviceAPI.c
-!lib/CUDA/ppport.h
+.idea/
+.vscode/
+.DS_Store

@@ -1,0 +1,7 @@
+severity = stern
+verbose  = %f:%l:%c: %m (%p)\n
+
+# Object methods (Buffer->read/write, Program->log) cannot be confused with
+# the builtins, but Perl::Critic cannot tell methods from functions.
+[Subroutines::ProhibitBuiltinHomonyms]
+allow = read write log
