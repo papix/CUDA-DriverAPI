@@ -21,8 +21,28 @@ subtest 'create from data or size' => sub {
 
     like dies { $ctx->buffer }, qr/Specify exactly one of data or size/;
     like dies { $ctx->buffer(data => 'x', size => 1) }, qr/Specify exactly one of data or size/;
-    like dies { $ctx->buffer(size => 0) },              qr/Invalid allocation size: 0/;
-    like dies { $ctx->buffer(size => '1.5') },          qr/Invalid allocation size: 1.5/;
+    like dies { $ctx->buffer(size => '1.5') },          qr/Invalid buffer size: 1.5/;
+    like dies { $ctx->buffer(size => -1) },             qr/Invalid buffer size: -1/;
+};
+
+subtest 'empty buffers' => sub {
+    for my $buffer ($ctx->buffer(size => 0), $ctx->buffer(data => '')) {
+        is $buffer->size, 0;
+        is $buffer->read, '', 'read';
+        ok lives { $buffer->write('') }, 'write';
+        ok lives { $buffer->fill(7) },   'fill';
+        is $buffer->write_array([], type => 'f32'), [0], 'write_array';
+        is $buffer->read_array(type => 'f32', dims => [0]), [], 'read_array';
+        is $buffer->read_array(type => 'f32', dims => [ 2, 0 ]), [ [], [] ];
+        like dies { $buffer->write('x') },                     qr/outside the buffer of 0 bytes/;
+        like dies { $buffer->read(size => 1) },                qr/outside the buffer of 0 bytes/;
+        like dies { $buffer->write_array([1], type => 'u8') }, qr/exceeds the buffer of 0 bytes/;
+    }
+
+    my $empty = $ctx->buffer(size => 0);
+    my $ptr   = $empty->ptr;
+    ok $empty->free,                      'freed';
+    ok !exists $ctx->{allocations}{$ptr}, 'and forgotten';
 };
 
 subtest 'read and write with offsets' => sub {

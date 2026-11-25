@@ -48,6 +48,17 @@ subtest 'invalid kernel arguments' => sub {
     like dies { $ctx->run($path, 'kernel_axpy', [ {} ]) },      $message;
 };
 
+subtest 'launch config values are checked' => sub {
+    my $buffer = $ctx->buffer(size => 4);
+    for my $bad (-1, 4294967296, 1.5, 'x', undef) {
+        like dies {
+            $ctx->run($path, 'kernel_axpy', [ [ f32 => 2 ], $buffer, $buffer, [ i32 => 1 ] ], [ 1, 1, 1, $bad ])
+        }, qr/Invalid launch config value: @{[ $bad \/\/ 'undef' ]}/;
+    }
+    like dies { $ctx->run($path, 'kernel_axpy', [ [ f32 => 2 ], $buffer, $buffer, [ i32 => 1 ] ], [ (1) x 8 ]) },
+        qr/Too many launch config values/;
+};
+
 subtest 'transfers are bounds-checked against the allocation' => sub {
     my $ptr = $ctx->malloc('x' x 16);
 
