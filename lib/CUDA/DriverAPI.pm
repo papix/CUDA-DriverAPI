@@ -48,10 +48,10 @@ sub buffer ($self, %args) {
 
     $size //= _byte_length($data);
     Carp::croak("Invalid buffer size: $size") unless $size =~ /\A[0-9]+\z/;
-    $size += 0;
+    $size =~ s/\A0+(?=[0-9])//;
 
-    # The driver allocates nothing for 0 bytes; give an empty buffer one byte
-    # that no method can reach.
+    # The driver allocates nothing for 0 bytes. An empty buffer gets one byte
+    # behind its pointer, but every size-checked method sees 0 bytes.
     my $ptr = $self->_alloc($size == 0 ? 1 : $size);
     $self->{allocations}{$ptr} = $size;
     my $buffer = CUDA::DriverAPI::Buffer->_new($self, $ptr, $size, $self->_own($ptr));
@@ -112,6 +112,7 @@ sub transfer_d2h ($self, $src_ptr, $dst = undef) {
 }
 
 sub run ($self, $code, $function, $args, $config = []) {
+    Carp::croak("The launch config must be an array reference") unless ref $config eq 'ARRAY';
     Carp::croak("Too many launch config values (" . @$config . " > 7)") if @$config > 7;
     for my $i (0 .. $#$config) {
         my $value = $config->[$i];
