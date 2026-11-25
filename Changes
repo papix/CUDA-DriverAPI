@@ -20,6 +20,8 @@ Revision history for Perl extension CUDA-DriverAPI
     - Do not clone objects into ithreads (CLONE_SKIP)
     - destroy() releases everything even when a step fails
     - Fix out-of-bounds write when passing kernel arguments
+    - Load libcuda at run time, so the module builds and loads without an
+      NVIDIA driver; new() then explains what is missing
     - Find the CUDA Toolkit without configuration (nvcc on PATH,
       /usr/local/cuda, /usr/local/cuda-X.Y, /opt/cuda, $CONDA_PREFIX, /usr);
       CUDA_HOME/CUDA_PATH pick a specific one. Without a toolkit, Build.PL

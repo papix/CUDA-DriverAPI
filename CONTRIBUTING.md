@@ -53,7 +53,7 @@ surrounding style and `.editorconfig`.
 | `lib/CUDA/DriverAPI.xs` | Driver API and NVRTC calls, array conversion |
 | `lib/CUDA/DriverAPI.pm` | Context object, `run`, `compile`, `load`, raw pointer API |
 | `lib/CUDA/DriverAPI/Buffer.pm`, `Program.pm` | Objects returned by `buffer` and `compile`/`load` |
-| `builder/MyBuilder.pm` | Finds the CUDA Toolkit and links `libcuda`/`libnvrtc` |
+| `builder/MyBuilder.pm` | Finds the CUDA Toolkit and links `libnvrtc` (`libcuda` is loaded at run time) |
 | `t/` | Tests; `t/ptx/*.ptx` are built from the `.cu` next to them |
 | `xt/` | Author tests (Perl::Critic, examples) |
 | `eg/`, `author/` | Examples and benchmarks |

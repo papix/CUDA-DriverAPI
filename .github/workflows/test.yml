@@ -44,8 +44,8 @@ jobs:
       - run: author/lint.sh
 
   test:
-    # GitHub-hosted runners have no GPU: build against the CUDA headers and the
-    # libcuda stub. Tests that need a device skip themselves.
+    # GitHub-hosted runners have no GPU and no driver: build against the CUDA
+    # headers and NVRTC. Tests that need a device skip themselves.
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
@@ -56,16 +56,14 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Install CUDA headers, NVRTC and libcuda stub
+      # Headers and NVRTC only: libcuda is loaded at run time, so on these
+      # GPU-less runners the module loads and device tests skip.
+      - name: Install CUDA headers and NVRTC
         run: |
           wget -q https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-keyring_1.1-1_all.deb
           sudo dpkg -i cuda-keyring_1.1-1_all.deb
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends cuda-cudart-dev-13-3 cuda-driver-dev-13-3 cuda-nvrtc-dev-13-3
-          # The stub is only shipped as libcuda.so; expose it under the runtime SONAME.
-          mkdir -p "$RUNNER_TEMP/libcuda"
-          ln -s "$CUDA_HOME/lib64/stubs/libcuda.so" "$RUNNER_TEMP/libcuda/libcuda.so.1"
-          echo "LD_LIBRARY_PATH=$RUNNER_TEMP/libcuda" >> "$GITHUB_ENV"
+          sudo apt-get install -y --no-install-recommends cuda-cudart-dev-13-3 cuda-nvrtc-dev-13-3
 
       - uses: shogo82148/actions-setup-perl@eebc5c886de14ebbfcd2493d49a12007d2c30477 # v1.44.5
         with:

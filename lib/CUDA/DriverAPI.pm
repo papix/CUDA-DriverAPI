@@ -477,8 +477,12 @@ thread instead.
 
 =head1 INSTALLATION
 
-Requirements: Perl 5.40 or later, an NVIDIA driver, and the CUDA Toolkit 12.0
-or later including NVRTC (C<cuda.h>, C<nvrtc.h> and C<libnvrtc>).
+Requirements: Perl 5.40 or later and the CUDA Toolkit 12.0 or later including
+NVRTC (C<cuda.h>, C<nvrtc.h> and C<libnvrtc>) to build; an NVIDIA driver for
+CUDA 12.0 or later to run kernels. The driver's C<libcuda> is loaded when
+C<new> is first called, so the module builds and loads without it (for example
+in a container build stage), and C<new> then croaks with
+C<CUDA driver not found: ...>.
 
     cpanm CUDA::DriverAPI
 
