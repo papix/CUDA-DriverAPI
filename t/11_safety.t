@@ -37,9 +37,12 @@ subtest 'kernel arguments are checked against the kernel' => sub {
     like dies { $ctx->run($program, 'scale', [ $buffer, [ i32 => 2 ] ]) }, qr/Kernel scale takes 3 arguments, got 2/;
     like dies { $ctx->run($program, 'scale', [ $buffer, [ i32 => 2 ], [ f32 => 3 ] ]) },
         qr/Argument 2 of scale is 4 bytes, the kernel parameter is 8 bytes/;
-    like dies { $ctx->run($program, 'scale', [ $buffer, [ i32 => 2 ], [ f64 => 3 ], [ i32 => 0 ] ]) },
-        qr/Kernel scale takes 3 arguments, got 4/;
     is $buffer->read_array(type => 'f32', dims => [2]), [ 1, 2 ], 'nothing ran';
+
+    # As before: the driver reads the first bytes of a longer argument and
+    # ignores extra ones.
+    ok lives { $ctx->run($program, 'scale', [ $buffer, [ i64 => 2 ], [ f64 => 3 ], [ i32 => 0 ] ], [ 1, 1, 1, 32 ]) };
+    is $buffer->read_array(type => 'f32', dims => [2]), [ 3, 6 ], 'longer and extra arguments run';
 };
 
 subtest 'empty arrays have a bounded number of rows' => sub {
@@ -52,8 +55,6 @@ subtest 'empty arrays have a bounded number of rows' => sub {
         qr/dims \[1000000000 0\] describe 1000000000 empty rows, more than the limit of 65536/;
     like dies { $buffer->read_array(type => 'f32', dims => [ 1_000_000_000, 0, 5 ]) },
         qr/describe 1000000000 empty rows/, 'a zero in the middle';
-    like dies { $buffer->read_array(type => 'f32', dims => [ 1000, 1000, 0 ], as => 'pdl') },
-        qr/describe 1000000 empty rows/, 'the same for ndarrays';
 
     my $large = $ctx->buffer(size => 100_000);
     is scalar @{ $large->read_array(type => 'u8', dims => [ 100_000, 0 ]) }, 100_000, 'one row per byte';

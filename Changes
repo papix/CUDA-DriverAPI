@@ -22,8 +22,9 @@ Revision history for Perl extension CUDA-DriverAPI
     - Do not clone objects into ithreads (CLONE_SKIP)
     - destroy() releases everything even when a step fails
     - Fix out-of-bounds write when passing kernel arguments
-    - run() checks the number and sizes of kernel arguments with drivers for
-      CUDA 12.4 or later
+    - run() croaks on a missing argument or one shorter than its kernel
+      parameter, which made the kernel read past it (drivers for CUDA 12.4
+      or later)
     - Objects do nothing in a forked child: methods croak, and nothing is
       released through the parent's context
     - read_array croaks on dims such as [1e9, 0], which allocated a billion

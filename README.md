@@ -91,10 +91,10 @@ CUDA C++ source at run time with NVRTC.
     `i8`, `u8`, `i16`, `u16`, `i32`, `u32`, `i64`, `u64`, `f32`, `f64`
     and `ptr`. A buffer must come from this object and not be freed yet.
 
-    With a driver for CUDA 12.4 or later, `run` croaks when the number of
-    arguments or the size of one (4 bytes for `i32`, 8 for a buffer, ...) does not
-    match the kernel's parameters. Older drivers launch without this check, and a
-    missing or short argument then makes the kernel read beyond it.
+    With a driver for CUDA 12.4 or later, `run` croaks when an argument is
+    missing or shorter than its kernel parameter (4 bytes for `i32`, 8 for a
+    buffer, ...). Older drivers launch without this check, and such an argument
+    then makes the kernel read beyond it.
 
     `@config` is
     `(gridDimX, gridDimY, gridDimZ, blockDimX, blockDimY, blockDimZ, sharedMemBytes)`;

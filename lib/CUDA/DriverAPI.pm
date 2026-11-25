@@ -77,8 +77,9 @@ sub malloc ($self, $data) {
 }
 
 sub free ($self, $ptr) {
+    Carp::croak("Not exist: $ptr") unless exists $self->{allocations}{$ptr};
     my $ctx = $self->_context;
-    Carp::croak("Not exist: $ptr") unless delete $self->{allocations}{$ptr};
+    delete $self->{allocations}{$ptr};
     delete $self->{owners}{$ptr};
     _free($ctx, $ptr);
     return true;
@@ -174,14 +175,15 @@ sub _in_owner_process ($self) {
     return defined $self->{pid} && $self->{pid} == $$;
 }
 
-# Without these checks, the driver reads past the end of a missing or short
-# argument (it copies as many bytes as the kernel declares).
+# The driver copies as many bytes as the kernel declares, so it reads past
+# the end of a missing or short argument. Longer and extra arguments are
+# only partly read, which earlier versions allowed, so they stay accepted.
 sub _check_args ($function, $packed, $sizes) {
-    Carp::croak("Kernel $function takes " . @$sizes . " arguments, got " . @$packed) unless @$packed == @$sizes;
+    Carp::croak("Kernel $function takes " . @$sizes . " arguments, got " . @$packed) if @$packed < @$sizes;
     for my $i (0 .. $#$sizes) {
         my $length = length $packed->[$i];
         Carp::croak("Argument $i of $function is $length bytes, the kernel parameter is $sizes->[$i] bytes")
-            unless $length == $sizes->[$i];
+            if $length < $sizes->[$i];
     }
     return;
 }
@@ -412,10 +414,10 @@ a C<< [ $type => $value ] >> pair passed by value, where C<$type> is one of
 C<i8>, C<u8>, C<i16>, C<u16>, C<i32>, C<u32>, C<i64>, C<u64>, C<f32>, C<f64>
 and C<ptr>. A buffer must come from this object and not be freed yet.
 
-With a driver for CUDA 12.4 or later, C<run> croaks when the number of
-arguments or the size of one (4 bytes for C<i32>, 8 for a buffer, ...) does not
-match the kernel's parameters. Older drivers launch without this check, and a
-missing or short argument then makes the kernel read beyond it.
+With a driver for CUDA 12.4 or later, C<run> croaks when an argument is
+missing or shorter than its kernel parameter (4 bytes for C<i32>, 8 for a
+buffer, ...). Older drivers launch without this check, and such an argument
+then makes the kernel read beyond it.
 
 C<@config> is
 C<(gridDimX, gridDimY, gridDimZ, blockDimX, blockDimY, blockDimZ, sharedMemBytes)>;
