@@ -64,7 +64,24 @@ subtest 'nvcc reached through a symlink' => sub {
     local $ENV{CUDA_HOME} = '';
     local $ENV{CUDA_PATH} = '';
     local $ENV{PATH}      = "$root/local/bin";
-    is((builder::MyBuilder::cuda_home_candidates())[0], Cwd::realpath($toolkit), 'the toolkit, not /local');
+    my @candidates = builder::MyBuilder::cuda_home_candidates();
+    is [ @candidates[ 0, 1 ] ], [ "$root/local", Cwd::realpath($toolkit) ],
+        'where nvcc was found, then where it points';
+    is builder::MyBuilder::find_cuda_home(@candidates), Cwd::realpath($toolkit), 'the toolkit, not /local';
+};
+
+subtest 'Debian-style nvcc: the headers are next to the link, not the target' => sub {
+    my $prefix = toolkit("$root/prefix", 'cuda.h', 'nvrtc.h');    # like /usr with /usr/include
+    make_path("$root/prefix/lib/nvidia-cuda-toolkit/bin");
+    open my $fh, '>', "$root/prefix/lib/nvidia-cuda-toolkit/bin/nvcc" or die $!;
+    close $fh;
+    chmod 0755, "$root/prefix/lib/nvidia-cuda-toolkit/bin/nvcc";
+    symlink "$root/prefix/lib/nvidia-cuda-toolkit/bin/nvcc", "$prefix/bin/nvcc" or die $!;
+
+    local $ENV{CUDA_HOME} = '';
+    local $ENV{CUDA_PATH} = '';
+    local $ENV{PATH}      = "$prefix/bin";
+    is builder::MyBuilder::find_cuda_home(builder::MyBuilder::cuda_home_candidates()), $prefix;
 };
 
 subtest 'versioned install directories, newest first' => sub {

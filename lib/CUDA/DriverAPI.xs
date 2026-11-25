@@ -14,6 +14,7 @@ extern "C" {
 #include "ppport.h"
 
 #include <dlfcn.h>
+#include <unistd.h>
 #include <float.h>
 #include <math.h>
 
@@ -92,6 +93,10 @@ load_driver(pTHX)
         SAVEFREEPV(error);
         lib = dlopen("/usr/lib/wsl/lib/libcuda.so.1", RTLD_NOW | RTLD_LOCAL);
         if (!lib) {
+            /* Report the WSL attempt too unless the file is simply absent. */
+            if (access("/usr/lib/wsl/lib/libcuda.so.1", F_OK) == 0) {
+                croak("CUDA driver not found: %s; %s", error, dlerror());
+            }
             croak("CUDA driver not found: %s", error);
         }
     }

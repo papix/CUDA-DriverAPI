@@ -65,8 +65,11 @@ sub cuda_home_candidates () {
     my @candidates;
     if (my $nvcc = which('nvcc')) {
 
-        # Through symlinks such as /usr/local/bin/nvcc to <toolkit>/bin/nvcc.
-        push @candidates, dirname(dirname(Cwd::realpath($nvcc) // $nvcc));
+        # Both the directory nvcc was found in and the one it resolves to: a
+        # symlink /usr/local/bin/nvcc -> <toolkit>/bin/nvcc needs the latter,
+        # Debian's /usr/bin/nvcc -> /usr/lib/nvidia-cuda-toolkit/bin/nvcc
+        # (headers in /usr/include) the former.
+        push @candidates, dirname(dirname($nvcc)), dirname(dirname(Cwd::realpath($nvcc) // $nvcc));
     }
     push @candidates, '/usr/local/cuda';
     push @candidates, sort { version_of($b) <=> version_of($a) } glob('/usr/local/cuda-[0-9]*');
