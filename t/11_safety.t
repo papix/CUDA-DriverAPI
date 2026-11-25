@@ -2,6 +2,7 @@ use v5.40;
 use Test2::V0;
 
 use File::Temp ();
+use POSIX      ();
 use CUDA::DriverAPI;
 
 skip_all "CUDA device is not available: $@" unless eval { CUDA::DriverAPI->new };
@@ -74,7 +75,7 @@ subtest 'a forked child leaves the parent\'s objects alone' => sub {
         undef $buffer;
         undef $program;
         $ctx->destroy;
-        exit 0;
+        POSIX::_exit(0);    # skip Test2's END blocks in the child
     }
     waitpid $pid, 0;
     is $?,                                                                    0,  'the child exited cleanly';

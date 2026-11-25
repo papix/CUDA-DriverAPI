@@ -140,10 +140,11 @@ load_driver(pTHX)
         }
     }
     {
-        /* Its ABI is the one declared above whatever the headers' version. */
+        /* Asked for at 12.4, the version that introduced it, so that it has
+         * the ABI declared above even if a later version changes it. */
         CUdriverProcAddressQueryResult status;
 
-        if (get_proc("cuFuncGetParamInfo", (void **)&p_func_get_param_info, driver_version,
+        if (get_proc("cuFuncGetParamInfo", (void **)&p_func_get_param_info, 12040,
                      CU_GET_PROC_ADDRESS_LEGACY_STREAM, &status) != CUDA_SUCCESS
             || status != CU_GET_PROC_ADDRESS_SUCCESS) {
             p_func_get_param_info = NULL;
