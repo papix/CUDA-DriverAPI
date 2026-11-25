@@ -961,8 +961,15 @@ CODE:
         if (err == CUDA_ERROR_INVALID_VALUE) {
             break; /* past the last parameter */
         }
-        CHECK_CU(err, "FuncGetParamInfo");
+        if (err != CUDA_SUCCESS) {
+            XSRETURN_UNDEF; /* the check is optional: launch unchecked */
+        }
         av_push(sizes, newSVuv((UV)size));
+    }
+    /* INVALID_VALUE at index 0 may also be a failure; extra arguments to a
+     * kernel without parameters are harmless anyway. */
+    if (av_count(sizes) == 0) {
+        XSRETURN_UNDEF;
     }
     RETVAL = newRV_inc((SV *)sizes);
 }

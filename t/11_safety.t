@@ -16,34 +16,47 @@ extern "C" __global__ void scale(float *data, int n, double factor)
 }
 CUDA
 
-subtest 'kernel arguments are checked against the kernel' => sub {
+subtest 'matching kernel arguments run' => sub {
     my $buffer = $ctx->buffer(size => 8);
     $buffer->write_array([ 1, 2 ], type => 'f32');
 
     $ctx->run($program, 'scale', [ $buffer, [ i32 => 2 ], [ f64 => 3 ] ], [ 1, 1, 1, 32 ]);
-    is $buffer->read_array(type => 'f32', dims => [2]), [ 3, 6 ], 'matching arguments run';
+    is $buffer->read_array(type => 'f32', dims => [2]), [ 3, 6 ];
+};
+
+subtest 'kernel arguments are checked against the kernel' => sub {
 
     # cuFuncGetParamInfo needs a CUDA 12.4 driver; older ones launch unchecked.
+    my $function = CUDA::DriverAPI::_get_function($ctx->_context, $ctx->_resolve_library($program), 'scale');
     skip_all 'the driver cannot report kernel parameters'
-        unless defined CUDA::DriverAPI::_param_sizes($ctx->_context,
-        CUDA::DriverAPI::_get_function($ctx->_context, $ctx->_resolve_library($program), 'scale'));
+        unless defined CUDA::DriverAPI::_param_sizes($ctx->_context, $function);
+
+    my $buffer = $ctx->buffer(size => 8);
+    $buffer->write_array([ 1, 2 ], type => 'f32');
 
     like dies { $ctx->run($program, 'scale', [ $buffer, [ i32 => 2 ] ]) }, qr/Kernel scale takes 3 arguments, got 2/;
     like dies { $ctx->run($program, 'scale', [ $buffer, [ i32 => 2 ], [ f32 => 3 ] ]) },
         qr/Argument 2 of scale is 4 bytes, the kernel parameter is 8 bytes/;
     like dies { $ctx->run($program, 'scale', [ $buffer, [ i32 => 2 ], [ f64 => 3 ], [ i32 => 0 ] ]) },
         qr/Kernel scale takes 3 arguments, got 4/;
-    is $buffer->read_array(type => 'f32', dims => [2]), [ 3, 6 ], 'nothing ran';
+    is $buffer->read_array(type => 'f32', dims => [2]), [ 1, 2 ], 'nothing ran';
 };
 
-subtest 'an empty array cannot have more rows than the buffer has bytes' => sub {
+subtest 'empty arrays have a bounded number of rows' => sub {
     my $buffer = $ctx->buffer(size => 4);
 
-    is $buffer->read_array(type => 'f32', dims => [ 3, 0 ]), [ [], [], [] ], 'a few empty rows';
+    is $buffer->read_array(type => 'f32', dims => [ 3, 0 ]),                    [ [], [], [] ], 'a few empty rows';
+    is scalar @{ $buffer->read_array(type => 'f32', dims => [ 100, 100, 0 ]) }, 100, 'up to 65536 for a small buffer';
+    is $buffer->read_array(type => 'f32', dims => [ 0, 1_000_000_000 ]),        [],  'no rows';
     like dies { $buffer->read_array(type => 'f32', dims => [ 1_000_000_000, 0 ]) },
-        qr/dims \[1000000000 0\] describe more rows than the buffer of 4 bytes can hold/;
-    like dies { $buffer->read_array(type => 'f32', dims => [ 5, 1, 0 ]) }, qr/describe more rows/;
-    is $buffer->read_array(type => 'f32', dims => [ 0, 1_000_000_000 ]), [], 'no rows';
+        qr/dims \[1000000000 0\] describe 1000000000 empty rows, more than the limit of 65536/;
+    like dies { $buffer->read_array(type => 'f32', dims => [ 1_000_000_000, 0, 5 ]) },
+        qr/describe 1000000000 empty rows/, 'a zero in the middle';
+    like dies { $buffer->read_array(type => 'f32', dims => [ 1000, 1000, 0 ], as => 'pdl') },
+        qr/describe 1000000 empty rows/, 'the same for ndarrays';
+
+    my $large = $ctx->buffer(size => 100_000);
+    is scalar @{ $large->read_array(type => 'u8', dims => [ 100_000, 0 ]) }, 100_000, 'one row per byte';
 };
 
 subtest 'a forked child leaves the parent\'s objects alone' => sub {

@@ -77,9 +77,10 @@ sub malloc ($self, $data) {
 }
 
 sub free ($self, $ptr) {
+    my $ctx = $self->_context;
     Carp::croak("Not exist: $ptr") unless delete $self->{allocations}{$ptr};
     delete $self->{owners}{$ptr};
-    _free($self->_context, $ptr);
+    _free($ctx, $ptr);
     return true;
 }
 
@@ -126,7 +127,7 @@ sub destroy ($self) {
 
     # A forked child inherits the objects but not a usable CUDA context:
     # drop them without calling the driver, which belongs to the parent.
-    unless ($self->{pid} == $$) {
+    unless ($self->_in_owner_process) {
         $self->@{qw(allocations libraries functions owners)} = ({}, {}, {}, {});
         return true;
     }
@@ -170,7 +171,7 @@ sub _context ($self) {
 }
 
 sub _in_owner_process ($self) {
-    return $self->{pid} == $$;
+    return defined $self->{pid} && $self->{pid} == $$;
 }
 
 # Without these checks, the driver reads past the end of a missing or short

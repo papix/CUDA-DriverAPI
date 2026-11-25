@@ -4,6 +4,8 @@ use Carp ();
 
 our $VERSION = "0.02";
 
+my $MAX_EMPTY_ROWS = 65536;
+
 # Created by CUDA::DriverAPI->buffer. Holds a reference to its context object
 # so that the context outlives every buffer allocated from it, and the token
 # that tells its allocation apart from a later one at the same address.
@@ -50,13 +52,18 @@ sub read_array ($self, %args) {
     Carp::croak("as must be 'array' or 'pdl'") unless $as eq 'array' || $as eq 'pdl';
     Carp::croak("into is an ndarray, which as => 'array' cannot fill") if $as eq 'array' && _is_pdl($args{into});
 
-    # An empty array still gets its rows, which the size check does not
-    # bound. Data that fits in the buffer has no more rows than it has bytes.
+    # An empty array still gets the rows before its first zero size, which
+    # the size check does not bound. Allow as many rows as the buffer has
+    # bytes (data that fits never has more), or a modest number for a small
+    # buffer.
     if (grep { $_ == 0 } @$dims) {
         my $rows = 1;
-        $rows *= $_ for @$dims[ 0 .. $#$dims - 1 ];
-        Carp::croak("dims [@$dims] describe more rows than the buffer of $self->{size} bytes can hold")
-            if $rows > $self->{size};
+        for my $dim (@$dims) {
+            last if $dim == 0;
+            $rows *= $dim;
+        }
+        my $limit = $self->{size} > $MAX_EMPTY_ROWS ? $self->{size} : $MAX_EMPTY_ROWS;
+        Carp::croak("dims [@$dims] describe $rows empty rows, more than the limit of $limit") if $rows > $limit;
     }
 
     return $self->_read_pdl($type, $dims, $args{into}) if $as eq 'pdl';

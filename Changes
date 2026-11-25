@@ -27,7 +27,8 @@ Revision history for Perl extension CUDA-DriverAPI
     - Objects do nothing in a forked child: methods croak, and nothing is
       released through the parent's context
     - read_array croaks on dims such as [1e9, 0], which allocated a billion
-      empty rows
+      empty rows (empty arrays may have as many rows as the buffer has bytes,
+      or 65536)
     - Load libcuda at run time, so the module builds and loads without an
       NVIDIA driver; new() then explains what is missing
     - Find the CUDA Toolkit without configuration (nvcc on PATH,
