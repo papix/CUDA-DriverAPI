@@ -1,22 +1,21 @@
 package builder::MyBuilder;
 use v5.40;
 use parent 'Module::Build::XSUtil';
+use Cwd            ();
 use File::Basename qw(dirname);
 use File::Spec;
 
 # Finds the CUDA Toolkit that provides cuda.h, nvrtc.h and libnvrtc, without
-# configuration where possible (see cuda_home_candidates). libcuda itself ships
-# with the NVIDIA driver; on WSL it lives in /usr/lib/wsl/lib, and the toolkit
-# stub is only a link-time fallback.
+# configuration where possible (see cuda_home_candidates). libcuda ships with
+# the NVIDIA driver and is not linked: the XS loads it at run time, so the
+# module builds and loads on machines without a driver.
 sub new ($class, %args) {
     my $cuda_home = find_cuda_home(cuda_home_candidates());
 
     # A wrong explicit setting is a configuration error, not a missing platform.
-    for my $var (grep { length($ENV{$_} // '') } qw(CUDA_HOME CUDA_PATH)) {
-        die "$var=$ENV{$var} does not contain include/cuda.h and include/nvrtc.h of a CUDA Toolkit.\n"
-            unless defined $cuda_home;
-        last;
-    }
+    my ($explicit) = grep { length($ENV{$_} // '') } qw(CUDA_HOME CUDA_PATH);
+    die "$explicit=$ENV{$explicit} does not contain include/cuda.h and include/nvrtc.h of a CUDA Toolkit.\n"
+        if $explicit && !defined $cuda_home;
 
     # "OS unsupported" makes CPAN Testers report NA instead of FAIL on machines
     # without the toolkit.
@@ -32,17 +31,15 @@ sub new ($class, %args) {
     my $system           = $cuda_home eq '/usr';
     my @include_dirs     = $system ? () : ("$cuda_home/include");
     my @toolkit_lib_dirs = $system ? () : grep { -d } ("$cuda_home/lib64", "$cuda_home/lib");
-    my @stub_dirs        = grep { -d } map { "$_/stubs" } $system ? glob('/usr/lib/*-linux-gnu') : @toolkit_lib_dirs;
-    my @driver_lib_dirs  = (grep({ -d } '/usr/lib/wsl/lib'), @stub_dirs);
 
-    my @search_flags = map { "-L$_" } @driver_lib_dirs, @toolkit_lib_dirs;
+    my @search_flags = map { "-L$_" } @toolkit_lib_dirs;
     my @rpath_flags  = map { "-Wl,-rpath,$_" } @toolkit_lib_dirs;
 
     print "Using the CUDA Toolkit in $cuda_home\n";
     my $builder = $class->SUPER::new(
         %args,
         include_dirs       => [@include_dirs],
-        extra_linker_flags => [ @search_flags, @rpath_flags, '-lcuda', '-lnvrtc' ],
+        extra_linker_flags => [ @search_flags, @rpath_flags, '-lnvrtc', '-ldl' ],
         cc_warnings        => 0,
     );
 
@@ -67,7 +64,12 @@ sub cuda_home_candidates () {
 
     my @candidates;
     if (my $nvcc = which('nvcc')) {
-        push @candidates, dirname(dirname($nvcc));    # <toolkit>/bin/nvcc
+
+        # The toolkit nvcc resolves to (a symlink such as /usr/local/bin/nvcc or
+        # an alternatives link), then the directory it was found in, for
+        # Debian's /usr/bin/nvcc -> /usr/lib/nvidia-cuda-toolkit/bin/nvcc whose
+        # headers are in /usr/include.
+        push @candidates, dirname(dirname(Cwd::realpath($nvcc) // $nvcc)), dirname(dirname($nvcc));
     }
     push @candidates, '/usr/local/cuda';
     push @candidates, sort { version_of($b) <=> version_of($a) } glob('/usr/local/cuda-[0-9]*');

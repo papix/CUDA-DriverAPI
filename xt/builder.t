@@ -53,6 +53,51 @@ subtest 'without configuration, nvcc on PATH comes first and /usr last' => sub {
     is builder::MyBuilder::find_cuda_home(@candidates), $toolkit;
 };
 
+subtest 'nvcc reached through a symlink' => sub {
+    my $toolkit = toolkit("$root/linked", 'cuda.h', 'nvrtc.h');
+    open my $fh, '>', "$toolkit/bin/nvcc" or die $!;
+    close $fh;
+    chmod 0755, "$toolkit/bin/nvcc";
+    make_path("$root/local/bin");
+    symlink "$toolkit/bin/nvcc", "$root/local/bin/nvcc" or die $!;
+
+    local $ENV{CUDA_HOME} = '';
+    local $ENV{CUDA_PATH} = '';
+    local $ENV{PATH}      = "$root/local/bin";
+    my @candidates = builder::MyBuilder::cuda_home_candidates();
+    is $candidates[0], Cwd::realpath($toolkit), 'where nvcc points first';
+    ok + (grep { $_ eq "$root/local" } @candidates), 'then where it was found';
+    is builder::MyBuilder::find_cuda_home(@candidates), Cwd::realpath($toolkit), 'the toolkit, not /local';
+};
+
+subtest 'Debian-style nvcc: the headers are next to the link, not the target' => sub {
+    my $prefix = toolkit("$root/prefix", 'cuda.h', 'nvrtc.h');    # like /usr with /usr/include
+    make_path("$root/prefix/lib/nvidia-cuda-toolkit/bin");
+    open my $fh, '>', "$root/prefix/lib/nvidia-cuda-toolkit/bin/nvcc" or die $!;
+    close $fh;
+    chmod 0755, "$root/prefix/lib/nvidia-cuda-toolkit/bin/nvcc";
+    symlink "$root/prefix/lib/nvidia-cuda-toolkit/bin/nvcc", "$prefix/bin/nvcc" or die $!;
+
+    local $ENV{CUDA_HOME} = '';
+    local $ENV{CUDA_PATH} = '';
+    local $ENV{PATH}      = "$prefix/bin";
+    is builder::MyBuilder::find_cuda_home(builder::MyBuilder::cuda_home_candidates()), $prefix;
+};
+
+subtest 'alternatives-style nvcc wins over stale headers next to the link' => sub {
+    my $stale = toolkit("$root/stale", 'cuda.h', 'nvrtc.h');    # like /usr with old headers
+    my $toolkit = toolkit("$root/cuda-13.3", 'cuda.h', 'nvrtc.h');
+    open my $fh, '>', "$toolkit/bin/nvcc" or die $!;
+    close $fh;
+    chmod 0755, "$toolkit/bin/nvcc";
+    symlink "$toolkit/bin/nvcc", "$stale/bin/nvcc" or die $!;
+
+    local $ENV{CUDA_HOME} = '';
+    local $ENV{CUDA_PATH} = '';
+    local $ENV{PATH}      = "$stale/bin";
+    is builder::MyBuilder::find_cuda_home(builder::MyBuilder::cuda_home_candidates()), Cwd::realpath($toolkit);
+};
+
 subtest 'versioned install directories, newest first' => sub {
     is [ sort { builder::MyBuilder::version_of($b) <=> builder::MyBuilder::version_of($a) }
             qw(/usr/local/cuda-12.9 /usr/local/cuda-13.10 /usr/local/cuda-13.3 /usr/local/cuda-12) ],

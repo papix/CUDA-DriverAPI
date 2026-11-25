@@ -13,6 +13,8 @@ extern "C" {
 
 #include "ppport.h"
 
+#include <dlfcn.h>
+#include <unistd.h>
 #include <float.h>
 #include <math.h>
 
@@ -22,6 +24,115 @@ extern "C" {
 #if CUDA_VERSION < 12000
 #error "CUDA::DriverAPI requires CUDA 12.0 or later (cuLibrary* API)"
 #endif
+
+/* ------------------------------------------------------------------------
+ * libcuda comes with the NVIDIA driver, so it is not linked but loaded at
+ * run time by load_driver(): the module then loads, and its tests skip, on
+ * machines with the toolkit but no driver. Every driver call goes through
+ * CU(name), a pointer with the exact type of the cuda.h prototype (which
+ * may be a _v2 variant), resolved with cuGetProcAddress.
+ * ------------------------------------------------------------------------ */
+
+#define CU_FUNCTIONS(X)                                                         \
+    X(cuInit) X(cuDeviceGet) X(cuDeviceGetAttribute)                            \
+    X(cuDevicePrimaryCtxRetain) X(cuDevicePrimaryCtxRelease)                    \
+    X(cuCtxSetCurrent) X(cuCtxSynchronize) X(cuGetErrorName) X(cuGetErrorString) \
+    X(cuMemAlloc) X(cuMemFree) X(cuMemcpyHtoD) X(cuMemcpyDtoH) X(cuMemsetD8Async) \
+    X(cuLibraryLoadFromFile) X(cuLibraryLoadData) X(cuLibraryUnload)             \
+    X(cuLibraryGetKernel) X(cuKernelGetFunction) X(cuLaunchKernel)
+
+#define CU_DECLARE(name) static __typeof__(&name) p_##name;
+CU_FUNCTIONS(CU_DECLARE)
+#undef CU_DECLARE
+
+#define CU(name) p_##name
+
+static const struct {
+    const char *name;
+    void **slot;
+} CU_TABLE[] = {
+#define CU_ENTRY(name) { #name, (void **)&p_##name },
+    CU_FUNCTIONS(CU_ENTRY)
+#undef CU_ENTRY
+};
+
+static int driver_loaded = 0;
+
+/* Gives up a partial load, so that a later new() starts over cleanly. */
+static void
+unload_driver(void *lib)
+{
+    size_t i;
+
+    for (i = 0; i < sizeof(CU_TABLE) / sizeof(CU_TABLE[0]); i++) {
+        *CU_TABLE[i].slot = NULL;
+    }
+    dlclose(lib);
+}
+
+static void
+load_driver(pTHX)
+{
+    void *lib;
+    __typeof__(&cuDriverGetVersion) get_version;
+    __typeof__(&cuGetProcAddress) get_proc;
+    int driver_version = 0;
+    int version;
+    CUresult err;
+    size_t i;
+
+    if (driver_loaded) {
+        return;
+    }
+    /* WSL keeps the driver's libcuda in /usr/lib/wsl/lib, which the loader
+     * normally knows through ld.so.conf; try it directly as a fallback. */
+    lib = dlopen("libcuda.so.1", RTLD_NOW | RTLD_LOCAL);
+    if (!lib) {
+        const char *message = dlerror();
+        SV *error = sv_2mortal(newSVpv(message ? message : "unknown dlopen error", 0));
+
+        lib = dlopen("/usr/lib/wsl/lib/libcuda.so.1", RTLD_NOW | RTLD_LOCAL);
+        if (!lib) {
+            /* Report the WSL attempt too unless the file is simply absent. */
+            const char *wsl_error = dlerror();
+
+            if (access("/usr/lib/wsl/lib/libcuda.so.1", F_OK) == 0) {
+                croak("CUDA driver not found: %" SVf "; %s", SVfARG(error), wsl_error ? wsl_error : "unknown dlopen error");
+            }
+            croak("CUDA driver not found: %" SVf, SVfARG(error));
+        }
+    }
+    get_version = (__typeof__(get_version))dlsym(lib, "cuDriverGetVersion");
+    get_proc    = (__typeof__(get_proc))dlsym(lib, "cuGetProcAddress_v2");
+    if (!get_version || !get_proc) {
+        unload_driver(lib);
+        croak("CUDA driver too old: libcuda.so.1 lacks cuGetProcAddress_v2 (CUDA 12.0 or later is required)");
+    }
+    if ((err = get_version(&driver_version)) != CUDA_SUCCESS) {
+        unload_driver(lib);
+        croak("CUDA driver not usable: cuDriverGetVersion returned CUresult %d"
+              " (34 means the toolkit's stub libcuda was loaded instead of a driver)", (int)err);
+    }
+    if (driver_version < 12000) {
+        unload_driver(lib);
+        croak("CUDA driver too old: version %d, CUDA 12.0 or later is required", driver_version);
+    }
+
+    /* Asking for a version newer than the driver's is an error, so ask for
+     * the driver's version when the headers are newer. The entry points used
+     * here kept their ABI from CUDA 12.0 on. */
+    version = driver_version < CUDA_VERSION ? driver_version : CUDA_VERSION;
+    for (i = 0; i < sizeof(CU_TABLE) / sizeof(CU_TABLE[0]); i++) {
+        CUdriverProcAddressQueryResult status;
+
+        if (get_proc(CU_TABLE[i].name, CU_TABLE[i].slot, version, CU_GET_PROC_ADDRESS_DEFAULT, &status) != CUDA_SUCCESS
+            || status != CU_GET_PROC_ADDRESS_SUCCESS || !*CU_TABLE[i].slot) {
+            unload_driver(lib);
+            croak("CUDA driver (version %d) does not provide %s", driver_version, CU_TABLE[i].name);
+        }
+    }
+    driver_loaded = 1;
+}
 
 /* Number of values accepted by cuLaunchKernel's launch configuration:
  * gridDimX, gridDimY, gridDimZ, blockDimX, blockDimY, blockDimZ, sharedMemBytes */
@@ -37,7 +148,7 @@ check_cu(pTHX_ CUresult err, const char *what)
         return;
     }
     /* The lookups themselves fail on e.g. the libcuda stub; fall back to the code. */
-    if (cuGetErrorName(err, &name) != CUDA_SUCCESS || cuGetErrorString(err, &desc) != CUDA_SUCCESS) {
+    if (CU(cuGetErrorName)(err, &name) != CUDA_SUCCESS || CU(cuGetErrorString)(err, &desc) != CUDA_SUCCESS) {
         croak("CUDA error at %s: CUresult %d", what, (int)err);
     }
     croak("CUDA error at %s: %s (%d): %s", what, name, (int)err, desc);
@@ -76,8 +187,11 @@ new_buffer(pTHX_ size_t len)
 
 /* Every entry point makes the object's context current, so that the calling
  * thread always operates on the right device. */
-#define SET_CONTEXT(ctx_sv) \
-    CHECK_CU(cuCtxSetCurrent(INT2PTR(CUcontext, SvIV(ctx_sv))), "CtxSetCurrent")
+#define SET_CONTEXT(ctx_sv)                                                              \
+    do {                                                                                 \
+        load_driver(aTHX);                                                               \
+        CHECK_CU(CU(cuCtxSetCurrent)(INT2PTR(CUcontext, SvIV(ctx_sv))), "CtxSetCurrent"); \
+    } while (0)
 
 /* Croaks with the same message as the Perl side when a transfer would run past
  * the end of a tracked allocation. */
@@ -430,13 +544,14 @@ CODE:
     CUcontext ctx;
     CUresult err;
 
-    CHECK_CU(cuInit(0), "Init");
-    CHECK_CU(cuDeviceGet(&dev, ordinal), "DeviceGet");
-    CHECK_CU(cuDevicePrimaryCtxRetain(&ctx, dev), "DevicePrimaryCtxRetain");
+    load_driver(aTHX);
+    CHECK_CU(CU(cuInit)(0), "Init");
+    CHECK_CU(CU(cuDeviceGet)(&dev, ordinal), "DeviceGet");
+    CHECK_CU(CU(cuDevicePrimaryCtxRetain)(&ctx, dev), "DevicePrimaryCtxRetain");
     /* The caller never sees ctx if this fails, so give the reference back. */
-    err = cuCtxSetCurrent(ctx);
+    err = CU(cuCtxSetCurrent)(ctx);
     if (err != CUDA_SUCCESS) {
-        cuDevicePrimaryCtxRelease(dev);
+        CU(cuDevicePrimaryCtxRelease)(dev);
     }
     CHECK_CU(err, "CtxSetCurrent");
 
@@ -451,8 +566,9 @@ CODE:
 {
     CUdevice dev;
 
-    CHECK_CU(cuDeviceGet(&dev, ordinal), "DeviceGet");
-    CHECK_CU(cuDevicePrimaryCtxRelease(dev), "DevicePrimaryCtxRelease");
+    load_driver(aTHX);
+    CHECK_CU(CU(cuDeviceGet)(&dev, ordinal), "DeviceGet");
+    CHECK_CU(CU(cuDevicePrimaryCtxRelease)(dev), "DevicePrimaryCtxRelease");
 }
 
 void
@@ -460,7 +576,7 @@ _synchronize(SV *ctx)
 CODE:
 {
     SET_CONTEXT(ctx);
-    CHECK_CU(cuCtxSynchronize(), "CtxSynchronize");
+    CHECK_CU(CU(cuCtxSynchronize)(), "CtxSynchronize");
 }
 
 UV
@@ -482,7 +598,7 @@ CODE:
     CUdeviceptr dev_ptr;
 
     SET_CONTEXT(ctx);
-    CHECK_CU(cuMemAlloc(&dev_ptr, (size_t)size), "MemAlloc");
+    CHECK_CU(CU(cuMemAlloc)(&dev_ptr, (size_t)size), "MemAlloc");
 
     RETVAL = newSVuv((UV)dev_ptr);
 }
@@ -495,7 +611,7 @@ CODE:
 {
     /* Ordered on the legacy default stream like kernel launches. */
     SET_CONTEXT(ctx);
-    CHECK_CU(cuMemsetD8Async((CUdeviceptr)SvUV(dev_ptr), (unsigned char)byte, (size_t)size, NULL), "MemsetD8Async");
+    CHECK_CU(CU(cuMemsetD8Async)((CUdeviceptr)SvUV(dev_ptr), (unsigned char)byte, (size_t)size, NULL), "MemsetD8Async");
 }
 
 SV *
@@ -538,7 +654,7 @@ CODE:
 
     if (bytes) {
         SET_CONTEXT(ctx);
-        CHECK_CU(cuMemcpyHtoD((CUdeviceptr)SvUV(dst_ptr), staging, bytes), "MemcpyHtoD");
+        CHECK_CU(CU(cuMemcpyHtoD)((CUdeviceptr)SvUV(dst_ptr), staging, bytes), "MemcpyHtoD");
     }
 
     dims_av = newAV();
@@ -585,7 +701,7 @@ CODE:
     SAVEFREEPV(staging);
     if (bytes) {
         SET_CONTEXT(ctx);
-        CHECK_CU(cuMemcpyDtoH(staging, (CUdeviceptr)SvUV(src_ptr), bytes), "MemcpyDtoH");
+        CHECK_CU(CU(cuMemcpyDtoH)(staging, (CUdeviceptr)SvUV(src_ptr), bytes), "MemcpyDtoH");
     }
 
     cursor = staging;
@@ -610,7 +726,7 @@ _free(SV *ctx, SV *dev_ptr)
 CODE:
 {
     SET_CONTEXT(ctx);
-    CHECK_CU(cuMemFree((CUdeviceptr)SvUV(dev_ptr)), "MemFree");
+    CHECK_CU(CU(cuMemFree)((CUdeviceptr)SvUV(dev_ptr)), "MemFree");
 }
 
 void
@@ -622,7 +738,7 @@ CODE:
 
     check_bounds(aTHX_ len, limit);
     SET_CONTEXT(ctx);
-    CHECK_CU(cuMemcpyHtoD((CUdeviceptr)SvUV(dst_ptr), buf, len), "MemcpyHtoD");
+    CHECK_CU(CU(cuMemcpyHtoD)((CUdeviceptr)SvUV(dst_ptr), buf, len), "MemcpyHtoD");
 }
 
 void
@@ -639,7 +755,7 @@ CODE:
     check_bounds(aTHX_ len, limit);
 
     SET_CONTEXT(ctx);
-    CHECK_CU(cuMemcpyDtoH(buf, (CUdeviceptr)SvUV(src_ptr), len), "MemcpyDtoH");
+    CHECK_CU(CU(cuMemcpyDtoH)(buf, (CUdeviceptr)SvUV(src_ptr), len), "MemcpyDtoH");
     SvSETMAGIC(dst);
 }
 
@@ -651,7 +767,7 @@ CODE:
     SV *buf = new_buffer(aTHX_ size);
 
     SET_CONTEXT(ctx);
-    CHECK_CU(cuMemcpyDtoH(SvPVX(buf), (CUdeviceptr)SvUV(src_ptr), (size_t)size), "MemcpyDtoH");
+    CHECK_CU(CU(cuMemcpyDtoH)(SvPVX(buf), (CUdeviceptr)SvUV(src_ptr), (size_t)size), "MemcpyDtoH");
     set_buffer_length(aTHX_ buf, size);
 
     RETVAL = SvREFCNT_inc_simple_NN(buf);
@@ -666,7 +782,7 @@ CODE:
     CUlibrary library;
 
     SET_CONTEXT(ctx);
-    CHECK_CU(cuLibraryLoadFromFile(&library, path, NULL, NULL, 0, NULL, NULL, 0), "LibraryLoadFromFile");
+    CHECK_CU(CU(cuLibraryLoadFromFile)(&library, path, NULL, NULL, 0, NULL, NULL, 0), "LibraryLoadFromFile");
 
     RETVAL = newSViv(PTR2IV(library));
 }
@@ -682,7 +798,7 @@ CODE:
     const char *code = SvPVbyte_nolen(image);
 
     SET_CONTEXT(ctx);
-    CHECK_CU(cuLibraryLoadData(&library, code, NULL, NULL, 0, NULL, NULL, 0), "LibraryLoadData");
+    CHECK_CU(CU(cuLibraryLoadData)(&library, code, NULL, NULL, 0, NULL, NULL, 0), "LibraryLoadData");
 
     RETVAL = newSViv(PTR2IV(library));
 }
@@ -697,9 +813,9 @@ PPCODE:
     int major, minor;
 
     SET_CONTEXT(ctx);
-    CHECK_CU(cuDeviceGet(&dev, ordinal), "DeviceGet");
-    CHECK_CU(cuDeviceGetAttribute(&major, CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MAJOR, dev), "DeviceGetAttribute");
-    CHECK_CU(cuDeviceGetAttribute(&minor, CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MINOR, dev), "DeviceGetAttribute");
+    CHECK_CU(CU(cuDeviceGet)(&dev, ordinal), "DeviceGet");
+    CHECK_CU(CU(cuDeviceGetAttribute)(&major, CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MAJOR, dev), "DeviceGetAttribute");
+    CHECK_CU(CU(cuDeviceGetAttribute)(&minor, CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MINOR, dev), "DeviceGetAttribute");
 
     EXTEND(SP, 2);
     mPUSHi(major);
@@ -789,7 +905,7 @@ _unload_library(SV *ctx, SV *library)
 CODE:
 {
     SET_CONTEXT(ctx);
-    CHECK_CU(cuLibraryUnload(INT2PTR(CUlibrary, SvIV(library))), "LibraryUnload");
+    CHECK_CU(CU(cuLibraryUnload)(INT2PTR(CUlibrary, SvIV(library))), "LibraryUnload");
 }
 
 SV *
@@ -800,8 +916,8 @@ CODE:
     CUfunction func;
 
     SET_CONTEXT(ctx);
-    CHECK_CU(cuLibraryGetKernel(&kernel, INT2PTR(CUlibrary, SvIV(library)), name), "LibraryGetKernel");
-    CHECK_CU(cuKernelGetFunction(&func, kernel), "KernelGetFunction");
+    CHECK_CU(CU(cuLibraryGetKernel)(&kernel, INT2PTR(CUlibrary, SvIV(library)), name), "LibraryGetKernel");
+    CHECK_CU(CU(cuKernelGetFunction)(&func, kernel), "KernelGetFunction");
 
     RETVAL = newSViv(PTR2IV(func));
 }
@@ -844,7 +960,7 @@ CODE:
     /* Launched on the legacy default stream without waiting: later copies,
      * frees and synchronize() order themselves after the kernel. */
     SET_CONTEXT(ctx);
-    CHECK_CU(cuLaunchKernel(INT2PTR(CUfunction, SvIV(function)),
+    CHECK_CU(CU(cuLaunchKernel)(INT2PTR(CUfunction, SvIV(function)),
                             cnf[0], cnf[1], cnf[2], cnf[3], cnf[4], cnf[5], cnf[6],
                             NULL, params, NULL), "LaunchKernel");
 }

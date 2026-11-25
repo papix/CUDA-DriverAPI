@@ -26,6 +26,9 @@ Setup, commands, layout and style are in `CONTRIBUTING.md`; read it first.
   adding explicit synchronization.
 - All objects for a device share its primary context, so a sticky kernel error
   breaks every object in the process.
+- libcuda is never linked: call driver functions as `CU(cuName)(...)` and add
+  any new one to `CU_FUNCTIONS` in the XS, which resolves it with
+  `cuGetProcAddress` when `new` first runs.
 - The driver loads code lazily: `load` of a broken image succeeds and fails at
   the first `run` (`LibraryGetKernel: CUDA_ERROR_INVALID_IMAGE`).
 - perltidy skips the generated `Build.PL`; never reformat it.
