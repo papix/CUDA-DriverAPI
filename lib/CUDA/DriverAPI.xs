@@ -88,7 +88,8 @@ load_driver(pTHX)
      * normally knows through ld.so.conf; try it directly as a fallback. */
     lib = dlopen("libcuda.so.1", RTLD_NOW | RTLD_LOCAL);
     if (!lib) {
-        SV *error = sv_2mortal(newSVpv(dlerror(), 0));
+        const char *message = dlerror();
+        SV *error = sv_2mortal(newSVpv(message ? message : "unknown dlopen error", 0));
 
         lib = dlopen("/usr/lib/wsl/lib/libcuda.so.1", RTLD_NOW | RTLD_LOCAL);
         if (!lib) {
@@ -96,7 +97,7 @@ load_driver(pTHX)
             const char *wsl_error = dlerror();
 
             if (access("/usr/lib/wsl/lib/libcuda.so.1", F_OK) == 0) {
-                croak("CUDA driver not found: %" SVf "; %s", SVfARG(error), wsl_error);
+                croak("CUDA driver not found: %" SVf "; %s", SVfARG(error), wsl_error ? wsl_error : "unknown dlopen error");
             }
             croak("CUDA driver not found: %" SVf, SVfARG(error));
         }
