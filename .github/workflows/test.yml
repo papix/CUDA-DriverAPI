@@ -46,24 +46,37 @@ jobs:
   test:
     # GitHub-hosted runners have no GPU and no driver: build against the CUDA
     # headers and NVRTC. Tests that need a device skip themselves.
-    runs-on: ubuntu-24.04
+    # CUDA 12.0 is the oldest supported toolkit; NVIDIA packages it only for
+    # Ubuntu 22.04 and earlier.
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         perl: ["5.40", "5.42", "5.44"]
+        cuda: ["13.3"]
+        os: [ubuntu-24.04]
+        repo: [ubuntu2404]
+        include:
+          - perl: "5.40"
+            cuda: "12.0"
+            os: ubuntu-22.04
+            repo: ubuntu2204
     env:
-      CUDA_HOME: /usr/local/cuda-13.3
+      CUDA_HOME: /usr/local/cuda-${{ matrix.cuda }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # Headers and NVRTC only: libcuda is loaded at run time, so on these
       # GPU-less runners the module loads and device tests skip.
       - name: Install CUDA headers and NVRTC
+        env:
+          REPO: ${{ matrix.repo }}
+          CUDA: ${{ matrix.cuda }}
         run: |
-          wget -q https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-keyring_1.1-1_all.deb
+          wget -q "https://developer.download.nvidia.com/compute/cuda/repos/$REPO/x86_64/cuda-keyring_1.1-1_all.deb"
           sudo dpkg -i cuda-keyring_1.1-1_all.deb
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends cuda-cudart-dev-13-3 cuda-nvrtc-dev-13-3
+          sudo apt-get install -y --no-install-recommends "cuda-cudart-dev-${CUDA/./-}" "cuda-nvrtc-dev-${CUDA/./-}"
 
       - uses: shogo82148/actions-setup-perl@eebc5c886de14ebbfcd2493d49a12007d2c30477 # v1.44.5
         with:
