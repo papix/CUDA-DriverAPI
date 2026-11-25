@@ -74,4 +74,10 @@ subtest 'invalid image' => sub {
         qr/CUDA error at Library\w+: CUDA_ERROR_INVALID_IMAGE/;
 };
 
+subtest 'PTX newer than the driver comes with a hint' => sub {
+    my $ptx = ".version 99.0\n.target sm_50\n.address_size 64\n\n.visible .entry k()\n{\n\tret;\n}\n\0";
+    like dies { $ctx->run($ctx->load($ptx), 'k', []) },
+        qr/CUDA_ERROR_UNSUPPORTED_PTX_VERSION .* Hint: the PTX needs a newer driver/;
+};
+
 done_testing;

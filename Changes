@@ -27,6 +27,14 @@ Revision history for Perl extension CUDA-DriverAPI
       or later)
     - Objects do nothing in a forked child: methods croak, and nothing is
       released through the parent's context
+    - buffer(size => 0) and buffer(data => '') create empty buffers
+    - run() checks launch config values (sizes 1 to 4294967295,
+      sharedMemBytes from 0) before loading anything, instead of truncating
+      them
+    - compile() looks up the device's architecture once per object, and
+      NVRTC errors name the step that failed
+    - CUDA_ERROR_UNSUPPORTED_PTX_VERSION explains that the toolkit is newer
+      than the driver
     - read_array croaks on dims such as [1e9, 0], which allocated a billion
       empty rows (empty arrays may have as many rows as the buffer has bytes,
       or 65536)

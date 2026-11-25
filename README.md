@@ -50,6 +50,7 @@ CUDA C++ source at run time with NVRTC.
     the memory when it goes out of scope. With `data`, the memory is
     `length($bytes)` bytes and initialized with `$bytes`; with `size`, it is
     `$size` bytes and uninitialized.
+    A size of 0 gives an empty buffer.
 
 - `$ctx->compile($source, %args)`
 
@@ -98,7 +99,8 @@ CUDA C++ source at run time with NVRTC.
 
     `@config` is
     `(gridDimX, gridDimY, gridDimZ, blockDimX, blockDimY, blockDimZ, sharedMemBytes)`;
-    omitted values default to `(1, 1, 1, 1, 1, 1, 0)`.
+    omitted values default to `(1, 1, 1, 1, 1, 1, 0)`. The sizes must be integers
+    from 1 to 4294967295, and `sharedMemBytes` from 0.
 
     The launch is asynchronous: `run` returns without waiting for the kernel.
     Reading memory back, freeing it, `destroy` and `synchronize` wait for it, and

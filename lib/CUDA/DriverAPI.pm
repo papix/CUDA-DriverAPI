@@ -46,8 +46,15 @@ sub buffer ($self, %args) {
     my ($data, $size) = @args{qw(data size)};
     Carp::croak("Specify exactly one of data or size") unless defined($data) xor defined($size);
 
-    my $ptr    = $self->_alloc($size // _byte_length($data));
-    my $buffer = CUDA::DriverAPI::Buffer->_new($self, $ptr, $self->{allocations}{$ptr}, $self->_own($ptr));
+    $size //= _byte_length($data);
+    Carp::croak("Invalid buffer size: $size") unless $size =~ /\A[0-9]+\z/;
+    $size =~ s/\A0+(?=[0-9])//;
+
+    # The driver allocates nothing for 0 bytes. An empty buffer gets one byte
+    # behind its pointer, but every size-checked method sees 0 bytes.
+    my $ptr = $self->_alloc($size == 0 ? 1 : $size);
+    $self->{allocations}{$ptr} = $size;
+    my $buffer = CUDA::DriverAPI::Buffer->_new($self, $ptr, $size, $self->_own($ptr));
     $buffer->write($data) if defined $data;
     return $buffer;
 }
@@ -105,6 +112,15 @@ sub transfer_d2h ($self, $src_ptr, $dst = undef) {
 }
 
 sub run ($self, $code, $function, $args, $config = []) {
+    Carp::croak("The launch config must be an array reference") unless ref $config eq 'ARRAY';
+    Carp::croak("Too many launch config values (" . @$config . " > 7)") if @$config > 7;
+    for my $i (0 .. $#$config) {
+        my $value = $config->[$i];
+        my $min   = $i < 6 ? 1 : 0;    # grid and block sizes, then sharedMemBytes
+        Carp::croak("Invalid launch config value: " . ($value // 'undef'))
+            unless defined $value && $value =~ /\A[0-9]+\z/ && $value >= $min && $value <= 4294967295;
+    }
+
     my $library = $self->_resolve_library($code);
     my ($func, $sizes) = @{
         $self->{functions}{$library}{$function} //= do {
@@ -215,7 +231,7 @@ sub _release_allocation ($self, $ptr, $token) {
     return unless $self->_owns($ptr, $token);
     delete $self->{owners}{$ptr};
     my $size = delete $self->{allocations}{$ptr};
-    _free($self->{context}, $ptr) if $size && $self->{context} && $self->_in_owner_process;
+    _free($self->{context}, $ptr) if defined $size && $self->{context} && $self->_in_owner_process;
     return;
 }
 
@@ -269,6 +285,10 @@ sub _resolve_library ($self, $code) {
 # it; otherwise emit PTX for the newest older architecture and let the driver
 # JIT-compile it.
 sub _default_arch ($self) {
+    return $self->{default_arch} //= $self->_find_default_arch;
+}
+
+sub _find_default_arch ($self) {
     my ($major, $minor) = $self->compute_capability;
     my $device = $major * 10 + $minor;
     my @archs  = _nvrtc_supported_archs();
@@ -373,6 +393,7 @@ Allocates device memory and returns a L<CUDA::DriverAPI::Buffer>, which frees
 the memory when it goes out of scope. With C<data>, the memory is
 C<length($bytes)> bytes and initialized with C<$bytes>; with C<size>, it is
 C<$size> bytes and uninitialized.
+A size of 0 gives an empty buffer.
 
 =item C<< $ctx->compile($source, %args) >>
 
@@ -421,7 +442,8 @@ then makes the kernel read beyond it.
 
 C<@config> is
 C<(gridDimX, gridDimY, gridDimZ, blockDimX, blockDimY, blockDimZ, sharedMemBytes)>;
-omitted values default to C<(1, 1, 1, 1, 1, 1, 0)>.
+omitted values default to C<(1, 1, 1, 1, 1, 1, 0)>. The sizes must be integers
+from 1 to 4294967295, and C<sharedMemBytes> from 0.
 
 The launch is asynchronous: C<run> returns without waiting for the kernel.
 Reading memory back, freeing it, C<destroy> and C<synchronize> wait for it, and
