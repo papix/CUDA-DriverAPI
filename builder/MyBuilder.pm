@@ -32,8 +32,11 @@ sub new ($class, %args) {
     my @include_dirs     = $system ? () : ("$cuda_home/include");
     my @toolkit_lib_dirs = $system ? () : grep { -d } ("$cuda_home/lib64", "$cuda_home/lib");
 
+    # libnvrtc dlopen()s libnvrtc-builtins by name and has no run path of its
+    # own. DT_RPATH (not the newer DT_RUNPATH) also applies to libraries that
+    # libnvrtc loads, so a toolkit outside the ld.so.conf paths works too.
     my @search_flags = map { "-L$_" } @toolkit_lib_dirs;
-    my @rpath_flags  = map { "-Wl,-rpath,$_" } @toolkit_lib_dirs;
+    my @rpath_flags  = @toolkit_lib_dirs ? ('-Wl,--disable-new-dtags', map { "-Wl,-rpath,$_" } @toolkit_lib_dirs) : ();
 
     print "Using the CUDA Toolkit in $cuda_home\n";
     my $builder = $class->SUPER::new(

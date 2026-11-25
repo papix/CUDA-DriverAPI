@@ -50,3 +50,4 @@ CLAUDE.local.md
 .idea/
 .vscode/
 .DS_Store
+*.tdy
