@@ -28,7 +28,7 @@ sub new ($class, %args) {
         context     => undef,
         allocations => {},    # device pointer => size in bytes
         libraries   => {},    # file path, or the handle of a compiled program => CUlibrary
-        functions   => {},    # CUlibrary => { name => CUfunction }
+        functions   => {},    # CUlibrary => { name => [ CUfunction, parameter sizes or undef ] }
         owners      => {},    # device pointer or CUlibrary => token of its Buffer/Program
     }, $class;
     $self->init;
@@ -36,7 +36,9 @@ sub new ($class, %args) {
 }
 
 sub init ($self) {
-    $self->{context} //= _init($self->{device});
+    return true if $self->{context};
+    $self->{context} = _init($self->{device});
+    $self->{pid}     = $$;
     return true;
 }
 
@@ -75,9 +77,11 @@ sub malloc ($self, $data) {
 }
 
 sub free ($self, $ptr) {
-    Carp::croak("Not exist: $ptr") unless delete $self->{allocations}{$ptr};
+    Carp::croak("Not exist: $ptr") unless exists $self->{allocations}{$ptr};
+    my $ctx = $self->_context;
+    delete $self->{allocations}{$ptr};
     delete $self->{owners}{$ptr};
-    _free($self->_context, $ptr);
+    _free($ctx, $ptr);
     return true;
 }
 
@@ -102,8 +106,15 @@ sub transfer_d2h ($self, $src_ptr, $dst = undef) {
 
 sub run ($self, $code, $function, $args, $config = []) {
     my $library = $self->_resolve_library($code);
-    my $func    = $self->{functions}{$library}{$function} //= _get_function($self->_context, $library, $function);
-    _launch($self->_context, $func, [ map { $self->_pack_arg($_) } @$args ], $config);
+    my ($func, $sizes) = @{
+        $self->{functions}{$library}{$function} //= do {
+            my $func = _get_function($self->_context, $library, $function);
+            [ $func, _param_sizes($self->_context, $func) ];
+        }
+    };
+    my @packed = map { $self->_pack_arg($_) } @$args;
+    _check_args($function, \@packed, $sizes) if $sizes;
+    _launch($self->_context, $func, \@packed, $config);
     return;
 }
 
@@ -114,6 +125,13 @@ sub synchronize ($self) {
 
 sub destroy ($self) {
     my $ctx = delete $self->{context} or return false;
+
+    # A forked child inherits the objects but not a usable CUDA context:
+    # drop them without calling the driver, which belongs to the parent.
+    unless ($self->_in_owner_process) {
+        $self->@{qw(allocations libraries functions owners)} = ({}, {}, {}, {});
+        return true;
+    }
 
     # Release everything even if a step fails (e.g. a sticky kernel error),
     # then report the first failure.
@@ -147,7 +165,27 @@ sub DESTROY ($self) {
 sub CLONE_SKIP { return 1 }
 
 sub _context ($self) {
-    return $self->{context} // Carp::croak("CUDA context has already been destroyed");
+    my $ctx = $self->{context} // Carp::croak("CUDA context has already been destroyed");
+    Carp::croak("CUDA objects cannot be used in a forked child process; create a new CUDA::DriverAPI there")
+        unless $self->_in_owner_process;
+    return $ctx;
+}
+
+sub _in_owner_process ($self) {
+    return defined $self->{pid} && $self->{pid} == $$;
+}
+
+# The driver copies as many bytes as the kernel declares, so it reads past
+# the end of a missing or short argument. Longer and extra arguments are
+# only partly read, which earlier versions allowed, so they stay accepted.
+sub _check_args ($function, $packed, $sizes) {
+    Carp::croak("Kernel $function takes " . @$sizes . " arguments, got " . @$packed) if @$packed < @$sizes;
+    for my $i (0 .. $#$sizes) {
+        my $length = length $packed->[$i];
+        Carp::croak("Argument $i of $function is $length bytes, the kernel parameter is $sizes->[$i] bytes")
+            if $length < $sizes->[$i];
+    }
+    return;
 }
 
 sub _alloc ($self, $size) {
@@ -176,7 +214,8 @@ sub _owns ($self, $handle, $token) {
 sub _release_allocation ($self, $ptr, $token) {
     return unless $self->_owns($ptr, $token);
     delete $self->{owners}{$ptr};
-    _free($self->{context}, $ptr) if $self->{context} && delete $self->{allocations}{$ptr};
+    my $size = delete $self->{allocations}{$ptr};
+    _free($self->{context}, $ptr) if $size && $self->{context} && $self->_in_owner_process;
     return;
 }
 
@@ -186,7 +225,7 @@ sub _release_library ($self, $library, $token) {
     delete $self->{owners}{$key};
     delete $self->{libraries}{$key} // return;
     delete $self->{functions}{$library};
-    _unload_library($self->{context}, $library) if $self->{context};
+    _unload_library($self->{context}, $library) if $self->{context} && $self->_in_owner_process;
     return;
 }
 
@@ -375,6 +414,11 @@ a C<< [ $type => $value ] >> pair passed by value, where C<$type> is one of
 C<i8>, C<u8>, C<i16>, C<u16>, C<i32>, C<u32>, C<i64>, C<u64>, C<f32>, C<f64>
 and C<ptr>. A buffer must come from this object and not be freed yet.
 
+With a driver for CUDA 12.4 or later, C<run> croaks when an argument is
+missing or shorter than its kernel parameter (4 bytes for C<i32>, 8 for a
+buffer, ...). Older drivers launch without this check, and such an argument
+then makes the kernel read beyond it.
+
 C<@config> is
 C<(gridDimX, gridDimY, gridDimZ, blockDimX, blockDimY, blockDimZ, sharedMemBytes)>;
 omitted values default to C<(1, 1, 1, 1, 1, 1, 0)>.
@@ -480,6 +524,12 @@ object for that device, stays unusable for the rest of the process.
 
 Objects are not cloned into new Perl ithreads; create a new object in each
 thread instead.
+
+After C<fork>, the child cannot use the parent's objects: their methods croak,
+and when they go away in the child, they release nothing, leaving the parent's
+memory and code intact. A child that needs the GPU should C<exec> a new
+program, as the CUDA driver does not support using it in a forked child of a
+process that has already used it.
 
 =head1 INSTALLATION
 

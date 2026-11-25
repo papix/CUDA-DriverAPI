@@ -91,6 +91,11 @@ CUDA C++ source at run time with NVRTC.
     `i8`, `u8`, `i16`, `u16`, `i32`, `u32`, `i64`, `u64`, `f32`, `f64`
     and `ptr`. A buffer must come from this object and not be freed yet.
 
+    With a driver for CUDA 12.4 or later, `run` croaks when an argument is
+    missing or shorter than its kernel parameter (4 bytes for `i32`, 8 for a
+    buffer, ...). Older drivers launch without this check, and such an argument
+    then makes the kernel read beyond it.
+
     `@config` is
     `(gridDimX, gridDimY, gridDimZ, blockDimX, blockDimY, blockDimZ, sharedMemBytes)`;
     omitted values default to `(1, 1, 1, 1, 1, 1, 0)`.
@@ -172,6 +177,12 @@ object for that device, stays unusable for the rest of the process.
 
 Objects are not cloned into new Perl ithreads; create a new object in each
 thread instead.
+
+After `fork`, the child cannot use the parent's objects: their methods croak,
+and when they go away in the child, they release nothing, leaving the parent's
+memory and code intact. A child that needs the GPU should `exec` a new
+program, as the CUDA driver does not support using it in a forked child of a
+process that has already used it.
 
 # INSTALLATION
 

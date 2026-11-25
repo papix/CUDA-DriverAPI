@@ -4,6 +4,8 @@ use Carp ();
 
 our $VERSION = "0.02";
 
+my $MAX_EMPTY_ROWS = 65536;
+
 # Created by CUDA::DriverAPI->buffer. Holds a reference to its context object
 # so that the context outlives every buffer allocated from it, and the token
 # that tells its allocation apart from a later one at the same address.
@@ -51,6 +53,20 @@ sub read_array ($self, %args) {
     Carp::croak("into is an ndarray, which as => 'array' cannot fill") if $as eq 'array' && _is_pdl($args{into});
 
     return $self->_read_pdl($type, $dims, $args{into}) if $as eq 'pdl';
+
+    # A nested array gets the rows before its first zero size even when it is
+    # empty, which the size check does not bound. Allow as many rows as the
+    # buffer has bytes (data that fits never has more), or 65536.
+    my $rows = 1;
+    for my $dim (@$dims) {
+        if ($dim == 0) {
+            my $limit = $self->{size} > $MAX_EMPTY_ROWS ? $self->{size} : $MAX_EMPTY_ROWS;
+            Carp::croak("dims [@$dims] describe $rows empty rows, more than the limit of $limit") if $rows > $limit;
+            last;
+        }
+        $rows *= $dim;
+    }
+
     return CUDA::DriverAPI::_read_array($self->_ctx->_context, $self->{ptr}, $self->{size}, $type, $dims, $args{into});
 }
 
