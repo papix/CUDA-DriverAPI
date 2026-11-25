@@ -75,6 +75,25 @@ subtest 'element types' => sub {
     }
 };
 
+subtest 'read into a view updates its parent' => sub {
+    my $buffer = $ctx->buffer(size => 8);
+    $buffer->write_array([ 1, 2 ], type => 'f32');
+
+    my $parent = PDL->zeroes(PDL::float(), 4);
+    $buffer->read_array(type => 'f32', dims => [2], into => $parent->slice('1:2'));
+    is $parent->unpdl, [ 0, 1, 2, 0 ];
+};
+
+subtest 'an oversized read leaves into untouched' => sub {
+    my $buffer = $ctx->buffer(size => 8);
+    my $target = PDL->sequence(PDL::float(), 2);
+
+    like dies { $buffer->read_array(type => 'f32', dims => [ 1000, 1000 ], into => $target) },
+        qr/Array of 4000000 bytes exceeds the buffer of 8 bytes/;
+    is [ $target->dims ], [2],      'not reshaped';
+    is $target->unpdl,    [ 0, 1 ], 'not overwritten';
+};
+
 subtest 'type conversion and views' => sub {
     my $buffer = $ctx->buffer(size => 24);
 

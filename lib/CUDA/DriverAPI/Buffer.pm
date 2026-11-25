@@ -1,7 +1,6 @@
 package CUDA::DriverAPI::Buffer;
 use v5.40;
-use Carp         ();
-use Scalar::Util qw(blessed);
+use Carp ();
 
 our $VERSION = "0.02";
 
@@ -100,6 +99,7 @@ my %PDL_TYPE_OF = (
 );
 #>>>
 my %ELEM_TYPE_OF = reverse %PDL_TYPE_OF;
+my %SIZE_OF      = (i8 => 1, u8 => 1, i16 => 2, u16 => 2, i32 => 4, u32 => 4, i64 => 8, u64 => 8, f32 => 4, f64 => 8);
 
 sub _is_pdl ($value) {
     return blessed($value) && $value->isa('PDL');
@@ -144,6 +144,11 @@ sub _read_pdl ($self, $type, $dims, $into) {
     my @pdl_dims = reverse @$dims;
     my $pdl;
 
+    # Check the size before allocating or reshaping anything.
+    my $bytes = $SIZE_OF{$type};
+    $bytes *= $_ for @$dims;
+    $self->_check_array_size($bytes);
+
     if (defined $into) {
         Carp::croak("into must be an ndarray when reading as 'pdl'") unless _is_pdl($into);
         Carp::croak("into holds " . $into->type . ", expected $pdl_type for $type")
@@ -158,7 +163,6 @@ sub _read_pdl ($self, $type, $dims, $into) {
     $pdl->make_physical;
 
     my $data = $pdl->get_dataref;
-    $self->_check_array_size(length $$data);
     CUDA::DriverAPI::_transfer_d2h($self->_ctx->_context, $self->{ptr}, $$data, $self->{size});
     $pdl->upd_data;
     return $pdl;
@@ -257,21 +261,6 @@ The same, returning a new L<PDL> ndarray, or filling the given one in place
 data is copied without per-element conversion, and the ndarray's dimensions
 are the reverse of C<@dims>.
 
-=back
-
-=head2 Dimensions and PDL
-
-C<dims> always lists the outermost dimension first: a nested array
-C<< $m->[$row][$col] >> has C<dims> C<[ $rows, $cols ]>. A PDL ndarray lists
-its innermost dimension first, so the same data as an ndarray has
-C<< $ndarray->dims >> C<($cols, $rows)>. Both store the elements in the same
-order in memory, which is why ndarrays need no conversion.
-
-PDL is optional. Nothing loads it unless an ndarray is passed in or
-C<< as => 'pdl' >> is requested, and the methods behave the same with or
-without it. Complex and long double ndarrays are not supported.
-
-=over 4
 
 =item C<< $buffer->fill($byte) >>
 
@@ -286,5 +275,18 @@ Frees the memory now instead of when the object goes out of scope.
 =back
 
 Reads and writes croak when the range does not fit in the buffer.
+
+=head2 Dimensions and PDL
+
+C<dims> always lists the outermost dimension first: a nested array
+C<< $m->[$row][$col] >> has C<dims> C<[ $rows, $cols ]>. A PDL ndarray lists
+its innermost dimension first, so the same data as an ndarray has
+C<< $ndarray->dims >> C<($cols, $rows)>. Both store the elements in the same
+order in memory, which is why ndarrays need no conversion.
+
+PDL is optional. Nothing loads it unless an ndarray is passed in or
+C<< as => 'pdl' >> is requested, and the methods behave the same with or
+without it. Complex and long double ndarrays are not supported.
+
 
 =cut
