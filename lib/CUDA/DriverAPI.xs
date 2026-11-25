@@ -56,6 +56,11 @@ static const struct {
 #undef CU_ENTRY
 };
 
+/* Optional, from CUDA 12.4 drivers on: lets run() check kernel arguments.
+ * Declared by hand so that the module still builds with older headers. */
+typedef CUresult (CUDAAPI *func_get_param_info_t)(CUfunction func, size_t index, size_t *offset, size_t *size);
+static func_get_param_info_t p_func_get_param_info;
+
 static int driver_loaded = 0;
 
 /* Gives up a partial load, so that a later new() starts over cleanly. */
@@ -67,6 +72,7 @@ unload_driver(void *lib)
     for (i = 0; i < sizeof(CU_TABLE) / sizeof(CU_TABLE[0]); i++) {
         *CU_TABLE[i].slot = NULL;
     }
+    p_func_get_param_info = NULL;
     dlclose(lib);
 }
 
@@ -120,15 +126,27 @@ load_driver(pTHX)
 
     /* Asking for a version newer than the driver's is an error, so ask for
      * the driver's version when the headers are newer. The entry points used
-     * here kept their ABI from CUDA 12.0 on. */
+     * here kept their ABI from CUDA 12.0 on. The legacy-stream variants keep
+     * the ordering that run() and fill() rely on (see AGENTS.md). */
     version = driver_version < CUDA_VERSION ? driver_version : CUDA_VERSION;
     for (i = 0; i < sizeof(CU_TABLE) / sizeof(CU_TABLE[0]); i++) {
         CUdriverProcAddressQueryResult status;
 
-        if (get_proc(CU_TABLE[i].name, CU_TABLE[i].slot, version, CU_GET_PROC_ADDRESS_DEFAULT, &status) != CUDA_SUCCESS
+        if (get_proc(CU_TABLE[i].name, CU_TABLE[i].slot, version, CU_GET_PROC_ADDRESS_LEGACY_STREAM, &status)
+                != CUDA_SUCCESS
             || status != CU_GET_PROC_ADDRESS_SUCCESS || !*CU_TABLE[i].slot) {
             unload_driver(lib);
             croak("CUDA driver (version %d) does not provide %s", driver_version, CU_TABLE[i].name);
+        }
+    }
+    {
+        /* Its ABI is the one declared above whatever the headers' version. */
+        CUdriverProcAddressQueryResult status;
+
+        if (get_proc("cuFuncGetParamInfo", (void **)&p_func_get_param_info, driver_version,
+                     CU_GET_PROC_ADDRESS_LEGACY_STREAM, &status) != CUDA_SUCCESS
+            || status != CU_GET_PROC_ADDRESS_SUCCESS) {
+            p_func_get_param_info = NULL;
         }
     }
     driver_loaded = 1;
@@ -920,6 +938,33 @@ CODE:
     CHECK_CU(CU(cuKernelGetFunction)(&func, kernel), "KernelGetFunction");
 
     RETVAL = newSViv(PTR2IV(func));
+}
+OUTPUT:
+    RETVAL
+
+SV *
+_param_sizes(SV *ctx, SV *function)
+CODE:
+{
+    AV *sizes;
+    size_t i;
+
+    SET_CONTEXT(ctx);
+    if (!p_func_get_param_info) {
+        XSRETURN_UNDEF;
+    }
+    sizes = (AV *)sv_2mortal((SV *)newAV());
+    for (i = 0;; i++) {
+        size_t offset, size;
+        CUresult err = p_func_get_param_info(INT2PTR(CUfunction, SvIV(function)), i, &offset, &size);
+
+        if (err == CUDA_ERROR_INVALID_VALUE) {
+            break; /* past the last parameter */
+        }
+        CHECK_CU(err, "FuncGetParamInfo");
+        av_push(sizes, newSVuv((UV)size));
+    }
+    RETVAL = newRV_inc((SV *)sizes);
 }
 OUTPUT:
     RETVAL

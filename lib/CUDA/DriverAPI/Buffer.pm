@@ -50,6 +50,15 @@ sub read_array ($self, %args) {
     Carp::croak("as must be 'array' or 'pdl'") unless $as eq 'array' || $as eq 'pdl';
     Carp::croak("into is an ndarray, which as => 'array' cannot fill") if $as eq 'array' && _is_pdl($args{into});
 
+    # An empty array still gets its rows, which the size check does not
+    # bound. Data that fits in the buffer has no more rows than it has bytes.
+    if (grep { $_ == 0 } @$dims) {
+        my $rows = 1;
+        $rows *= $_ for @$dims[ 0 .. $#$dims - 1 ];
+        Carp::croak("dims [@$dims] describe more rows than the buffer of $self->{size} bytes can hold")
+            if $rows > $self->{size};
+    }
+
     return $self->_read_pdl($type, $dims, $args{into}) if $as eq 'pdl';
     return CUDA::DriverAPI::_read_array($self->_ctx->_context, $self->{ptr}, $self->{size}, $type, $dims, $args{into});
 }

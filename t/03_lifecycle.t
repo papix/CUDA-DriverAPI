@@ -28,7 +28,7 @@ subtest 'errors from the driver carry the CUDA error name' => sub {
     like dies { $ctx->run($path, 'no_such_kernel', []) }, qr/CUDA error at LibraryGetKernel: CUDA_ERROR_NOT_FOUND/;
     like dies { $ctx->run(File::Spec->catfile($FindBin::Bin, 'no_such.ptx'), 'kernel_sum', []) },
         qr/CUDA error at LibraryLoadFromFile: CUDA_ERROR_FILE_NOT_FOUND/;
-    like dies { $ctx->run($path, 'kernel_sum', [], [ (1) x 8 ]) }, qr/Too many launch config values/;
+    like dies { $ctx->run($path, 'kernel_sum', [ (0) x 4 ], [ (1) x 8 ]) }, qr/Too many launch config values/;
 };
 
 subtest 'destroy' => sub {
