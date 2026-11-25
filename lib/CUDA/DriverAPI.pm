@@ -1,7 +1,6 @@
 package CUDA::DriverAPI;
 use v5.40;
-use Carp         ();
-use Scalar::Util qw(blessed);
+use Carp ();
 
 use CUDA::DriverAPI::Buffer;
 use CUDA::DriverAPI::Program;

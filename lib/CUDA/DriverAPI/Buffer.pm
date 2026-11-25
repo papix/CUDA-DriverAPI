@@ -100,7 +100,6 @@ my %PDL_TYPE_OF = (
 );
 #>>>
 my %ELEM_TYPE_OF = reverse %PDL_TYPE_OF;
-my %SIZE_OF      = (i8 => 1, u8 => 1, i16 => 2, u16 => 2, i32 => 4, u32 => 4, i64 => 8, u64 => 8, f32 => 4, f64 => 8);
 
 sub _is_pdl ($value) {
     return blessed($value) && $value->isa('PDL');
@@ -143,24 +142,23 @@ sub _write_pdl ($self, $pdl, %args) {
 sub _read_pdl ($self, $type, $dims, $into) {
     my $pdl_type = $PDL_TYPE_OF{$type} // Carp::croak("Unknown array element type: $type");
     my @pdl_dims = reverse @$dims;
-    my $pdl;
-
-    # Check the size before allocating or reshaping anything.
-    my $bytes = $SIZE_OF{$type};
-    $bytes *= $_ for @$dims;
-    $self->_check_array_size($bytes);
 
     if (defined $into) {
         Carp::croak("into must be an ndarray when reading as 'pdl'") unless _is_pdl($into);
         Carp::croak("into holds " . $into->type . ", expected $pdl_type for $type")
             unless _elem_type_of_pdl($into) eq $type;
-        $into->reshape(@pdl_dims) unless "@{[ $into->dims ]}" eq "@pdl_dims";
-        $pdl = $into;
     }
     else {
         eval { require PDL::Lite; 1 } or Carp::croak("PDL is required for as => 'pdl': $@");
-        $pdl = PDL->new_from_specification(PDL::Type->new($pdl_type), @pdl_dims);
     }
+
+    # Check the size before allocating or reshaping anything.
+    my $bytes = PDL::Core::howbig(PDL::Type->new($pdl_type));
+    $bytes *= $_ for @$dims;
+    $self->_check_array_size($bytes);
+
+    my $pdl = $into // PDL->new_from_specification(PDL::Type->new($pdl_type), @pdl_dims);
+    $pdl->reshape(@pdl_dims) unless "@{[ $pdl->dims ]}" eq "@pdl_dims";
     $pdl->make_physical;
 
     my $data = $pdl->get_dataref;
