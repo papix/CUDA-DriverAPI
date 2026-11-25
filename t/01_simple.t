@@ -1,46 +1,41 @@
-use warnings;
-use strict;
-use Test::More;
-
-use CUDA::DriverAPI;
-use Cwd;
+use v5.40;
+use Test2::V0;
+use FindBin;
 use File::Spec;
 
-my $max = 10;
-my $max_data  = pack('i', $max);
-my $host_data = pack('f*', 1..$max);
+use CUDA::DriverAPI;
 
-my $path = File::Spec->catfile(cwd(), qw/ t ptx 01_simple.ptx /);
+skip_all "CUDA device is not available: $@" unless eval { CUDA::DriverAPI->new };
 
-my $ctx = CUDA::DriverAPI->new();
+my $max       = 10;
+my $max_data  = pack('i',  $max);
+my $host_data = pack('f*', 1 .. $max);
+my $path      = File::Spec->catfile($FindBin::Bin, qw/ ptx 01_simple.ptx /);
 
-my $dev_ptr_1 = $ctx->malloc($host_data);
-my $dev_ptr_2 = $ctx->malloc($host_data);
-my $dev_ptr_3 = $ctx->malloc($host_data);
-my $int_ptr   = $ctx->malloc($max_data);
+my $ctx = CUDA::DriverAPI->new;
 
-$ctx->transfer_h2d($host_data, $dev_ptr_1);
-$ctx->transfer_h2d($host_data, $dev_ptr_2);
-$ctx->transfer_h2d($max_data,  $int_ptr  );
+my @dev_ptrs = map { $ctx->malloc($host_data) } 1 .. 3;
+my $int_ptr  = $ctx->malloc($max_data);
+
+$ctx->transfer_h2d($host_data, $dev_ptrs[0]);
+$ctx->transfer_h2d($host_data, $dev_ptrs[1]);
+$ctx->transfer_h2d($max_data,  $int_ptr);
 
 subtest 'Run successfully' => sub {
-    $ctx->run($path, 'kernel_sum', [
-        $dev_ptr_1,
-        $dev_ptr_2,
-        $dev_ptr_3,
-        $int_ptr,
-    ], [
-        $max
-    ]
-    );
+    $ctx->run($path, 'kernel_sum', [ @dev_ptrs, $int_ptr ], [$max]);
 
     my $result = pack('f*', (0) x $max);
-    $ctx->transfer_d2h($dev_ptr_3, \$result);
+    $ctx->transfer_d2h($dev_ptrs[2], \$result);
 
-    my @results = unpack('f*', $result);
+    is [ unpack('f*', $result) ], [ map { $_ * 2 } 1 .. $max ];
+};
 
-    is_deeply(\@results, [map { $_ * 2 } 1..$max]);
+subtest 'Run again with the cached library and function' => sub {
+    $ctx->run($path, 'kernel_sum', [ @dev_ptrs, $int_ptr ], [$max]);
+
+    is [ unpack('f*', $ctx->transfer_d2h($dev_ptrs[2])) ],          [ map { $_ * 2 } 1 .. $max ];
+    is [ keys %{ $ctx->{libraries} } ],                             [$path];
+    is [ keys %{ $ctx->{functions}{ $ctx->{libraries}{$path} } } ], ['kernel_sum'];
 };
 
 done_testing;
-

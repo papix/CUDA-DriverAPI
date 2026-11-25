@@ -1,1 +1,9 @@
-name = "CUDA-DriverAPI"[build]build_class = "builder::MyBuilder"
+name = "CUDA-DriverAPI"
+module_maker = "ModuleBuild"
+
+[build]
+build_class = "builder::MyBuilder"
+
+# Repository-only files that users of the CPAN distribution do not need.
+[FileGatherer]
+exclude_match = ['^AGENTS\.md$', '^CLAUDE\.md$', '^author/lint\.sh$']
