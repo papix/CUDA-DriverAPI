@@ -48,6 +48,7 @@ sub read_array ($self, %args) {
         Carp::croak("Invalid dimension: " . ($dim // 'undef')) unless defined $dim && $dim =~ /\A[0-9]+\z/;
     }
     Carp::croak("as must be 'array' or 'pdl'") unless $as eq 'array' || $as eq 'pdl';
+    Carp::croak("into is an ndarray, which as => 'array' cannot fill") if $as eq 'array' && _is_pdl($args{into});
 
     return $self->_read_pdl($type, $dims, $args{into}) if $as eq 'pdl';
     return CUDA::DriverAPI::_read_array($self->_ctx->_context, $self->{ptr}, $self->{size}, $type, $dims, $args{into});

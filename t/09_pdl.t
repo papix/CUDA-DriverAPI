@@ -122,6 +122,8 @@ subtest 'invalid input' => sub {
     like dies { $buffer->read_array(type => 'f32', dims => [3], as => 'pdl') },
         qr/Array of 12 bytes exceeds the buffer of 8 bytes/;
     like dies { $buffer->read_array(type => 'f32', dims => [1], as => 'hash') }, qr/as must be 'array' or 'pdl'/;
+    like dies { $buffer->read_array(type => 'f32', dims => [1], as => 'array', into => PDL->zeroes(PDL::float(), 1)) },
+        qr/into is an ndarray, which as => 'array' cannot fill/;
 };
 
 subtest 'works with kernels' => sub {
