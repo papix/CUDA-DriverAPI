@@ -1,6 +1,7 @@
 package builder::MyBuilder;
 use v5.40;
 use parent 'Module::Build::XSUtil';
+use Cwd            ();
 use File::Basename qw(dirname);
 use File::Spec;
 
@@ -12,11 +13,9 @@ sub new ($class, %args) {
     my $cuda_home = find_cuda_home(cuda_home_candidates());
 
     # A wrong explicit setting is a configuration error, not a missing platform.
-    for my $var (grep { length($ENV{$_} // '') } qw(CUDA_HOME CUDA_PATH)) {
-        die "$var=$ENV{$var} does not contain include/cuda.h and include/nvrtc.h of a CUDA Toolkit.\n"
-            unless defined $cuda_home;
-        last;
-    }
+    my ($explicit) = grep { length($ENV{$_} // '') } qw(CUDA_HOME CUDA_PATH);
+    die "$explicit=$ENV{$explicit} does not contain include/cuda.h and include/nvrtc.h of a CUDA Toolkit.\n"
+        if $explicit && !defined $cuda_home;
 
     # "OS unsupported" makes CPAN Testers report NA instead of FAIL on machines
     # without the toolkit.
@@ -65,7 +64,9 @@ sub cuda_home_candidates () {
 
     my @candidates;
     if (my $nvcc = which('nvcc')) {
-        push @candidates, dirname(dirname($nvcc));    # <toolkit>/bin/nvcc
+
+        # Through symlinks such as /usr/local/bin/nvcc to <toolkit>/bin/nvcc.
+        push @candidates, dirname(dirname(Cwd::realpath($nvcc) // $nvcc));
     }
     push @candidates, '/usr/local/cuda';
     push @candidates, sort { version_of($b) <=> version_of($a) } glob('/usr/local/cuda-[0-9]*');

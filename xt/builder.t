@@ -53,6 +53,20 @@ subtest 'without configuration, nvcc on PATH comes first and /usr last' => sub {
     is builder::MyBuilder::find_cuda_home(@candidates), $toolkit;
 };
 
+subtest 'nvcc reached through a symlink' => sub {
+    my $toolkit = toolkit("$root/linked", 'cuda.h', 'nvrtc.h');
+    open my $fh, '>', "$toolkit/bin/nvcc" or die $!;
+    close $fh;
+    chmod 0755, "$toolkit/bin/nvcc";
+    make_path("$root/local/bin");
+    symlink "$toolkit/bin/nvcc", "$root/local/bin/nvcc" or die $!;
+
+    local $ENV{CUDA_HOME} = '';
+    local $ENV{CUDA_PATH} = '';
+    local $ENV{PATH}      = "$root/local/bin";
+    is((builder::MyBuilder::cuda_home_candidates())[0], Cwd::realpath($toolkit), 'the toolkit, not /local');
+};
+
 subtest 'versioned install directories, newest first' => sub {
     is [ sort { builder::MyBuilder::version_of($b) <=> builder::MyBuilder::version_of($a) }
             qw(/usr/local/cuda-12.9 /usr/local/cuda-13.10 /usr/local/cuda-13.3 /usr/local/cuda-12) ],
