@@ -89,6 +89,10 @@ jobs:
 
       - run: perl Build.PL
       - run: ./Build
+      # NVRTC finds libnvrtc-builtins only through a DT_RPATH (see
+      # builder/MyBuilder.pm); no test can check it without a GPU.
+      - name: Check the run path type
+        run: readelf -d blib/arch/auto/CUDA/DriverAPI/DriverAPI.so | grep -F '(RPATH)'
       # Only t/: in a git checkout `./Build test` also runs xt/, whose develop
       # prerequisites are installed (and run) in the steps below.
       - run: prove -b t/

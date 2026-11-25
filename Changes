@@ -31,7 +31,8 @@ Revision history for Perl extension CUDA-DriverAPI
     - compile() finds the toolkit headers (cuda_fp16.h, cuda/std/...) without
       options
     - compile() works with a toolkit outside the ld.so.conf paths (NVRTC finds
-      libnvrtc-builtins through the module's run path)
+      libnvrtc-builtins through the module's DT_RPATH, which also takes
+      precedence over LD_LIBRARY_PATH)
     - Tests use Test2::V0 and skip when no CUDA device is available
     - Add Perl::Critic author test
     - Replace Travis CI with GitHub Actions
