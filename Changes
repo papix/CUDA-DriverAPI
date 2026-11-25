@@ -8,6 +8,8 @@ Revision history for Perl extension CUDA-DriverAPI
     - Add compile() to build CUDA C++ source at run time with NVRTC
     - Add buffer() returning CUDA::DriverAPI::Buffer, freed automatically
     - Add Buffer->write_array/read_array to convert nested arrays in C
+    - write_array/read_array also take and return PDL ndarrays (optional
+      dependency), copying their data without conversion
     - Add Buffer->fill (cuMemsetD8Async)
     - Add load() for compiled images and compute_capability()
     - Add `device` option to new()

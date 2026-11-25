@@ -29,6 +29,7 @@ my %args = (
     },
 
     recommends => {
+        'PDL' => '2.106',
     },
 
     suggests => {

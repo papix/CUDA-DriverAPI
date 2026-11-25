@@ -32,6 +32,10 @@ Setup, commands, layout and style are in `CONTRIBUTING.md`; read it first.
 - The driver loads code lazily: `load` of a broken image succeeds and fails at
   the first `run` (`LibraryGetKernel: CUDA_ERROR_INVALID_IMAGE`).
 - perltidy skips the generated `Build.PL`; never reformat it.
+- PDL is optional (the maintainer's decision): the same `write_array`/`read_array`
+  calls take nested arrays or ndarrays, nothing loads PDL unless an ndarray or
+  `as => 'pdl'` is involved (`t/10_without_pdl.t`), and only PDL's Perl API
+  (`get_dataref`/`upd_data`) is used, never its C headers.
 - Keep existing method semantics; the downstream project papix/PerCUDA uses
   `buffer`, `write_array`, `read_array`, `fill`, `load`, `compute_capability`
   and `run` with `[type => value]` arguments.

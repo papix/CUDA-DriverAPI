@@ -35,6 +35,7 @@
       "develop" : {
          "requires" : {
             "Minilla" : "v3.3.2",
+            "PDL" : "2.106",
             "Perl::Critic" : "1.156",
             "Perl::Tidy" : "20260826",
             "Test::CPAN::Meta" : "0.25",
@@ -46,6 +47,9 @@
          }
       },
       "runtime" : {
+         "recommends" : {
+            "PDL" : "2.106"
+         },
          "requires" : {
             "Carp" : "0",
             "XSLoader" : "0",
