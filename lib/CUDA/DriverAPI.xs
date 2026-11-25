@@ -57,6 +57,18 @@ static const struct {
 
 static int driver_loaded = 0;
 
+/* Gives up a partial load, so that a later new() starts over cleanly. */
+static void
+unload_driver(void *lib)
+{
+    size_t i;
+
+    for (i = 0; i < sizeof(CU_TABLE) / sizeof(CU_TABLE[0]); i++) {
+        *CU_TABLE[i].slot = NULL;
+    }
+    dlclose(lib);
+}
+
 static void
 load_driver(pTHX)
 {
@@ -65,35 +77,50 @@ load_driver(pTHX)
     __typeof__(&cuGetProcAddress) get_proc;
     int driver_version = 0;
     int version;
+    CUresult err;
     size_t i;
 
     if (driver_loaded) {
         return;
     }
+    /* WSL keeps the driver's libcuda in /usr/lib/wsl/lib, which the loader
+     * normally knows through ld.so.conf; try it directly as a fallback. */
     lib = dlopen("libcuda.so.1", RTLD_NOW | RTLD_LOCAL);
     if (!lib) {
-        croak("CUDA driver not found: %s", dlerror());
+        char *error = savepv(dlerror());
+
+        SAVEFREEPV(error);
+        lib = dlopen("/usr/lib/wsl/lib/libcuda.so.1", RTLD_NOW | RTLD_LOCAL);
+        if (!lib) {
+            croak("CUDA driver not found: %s", error);
+        }
     }
     get_version = (__typeof__(get_version))dlsym(lib, "cuDriverGetVersion");
     get_proc    = (__typeof__(get_proc))dlsym(lib, "cuGetProcAddress_v2");
     if (!get_version || !get_proc) {
+        unload_driver(lib);
         croak("CUDA driver too old: libcuda.so.1 lacks cuGetProcAddress_v2 (CUDA 12.0 or later is required)");
     }
-    if (get_version(&driver_version) != CUDA_SUCCESS) {
-        croak("CUDA driver not usable: cuDriverGetVersion failed (the toolkit's stub libcuda instead of a driver?)");
+    if ((err = get_version(&driver_version)) != CUDA_SUCCESS) {
+        unload_driver(lib);
+        croak("CUDA driver not usable: cuDriverGetVersion returned CUresult %d"
+              " (34 means the toolkit's stub libcuda was loaded instead of a driver)", (int)err);
     }
     if (driver_version < 12000) {
+        unload_driver(lib);
         croak("CUDA driver too old: version %d, CUDA 12.0 or later is required", driver_version);
     }
 
     /* Asking for a version newer than the driver's is an error, so ask for
-     * the driver's version when the headers are newer. */
+     * the driver's version when the headers are newer. The entry points used
+     * here kept their ABI from CUDA 12.0 on. */
     version = driver_version < CUDA_VERSION ? driver_version : CUDA_VERSION;
     for (i = 0; i < sizeof(CU_TABLE) / sizeof(CU_TABLE[0]); i++) {
         CUdriverProcAddressQueryResult status;
 
         if (get_proc(CU_TABLE[i].name, CU_TABLE[i].slot, version, CU_GET_PROC_ADDRESS_DEFAULT, &status) != CUDA_SUCCESS
             || status != CU_GET_PROC_ADDRESS_SUCCESS || !*CU_TABLE[i].slot) {
+            unload_driver(lib);
             croak("CUDA driver (version %d) does not provide %s", driver_version, CU_TABLE[i].name);
         }
     }
@@ -154,6 +181,7 @@ new_buffer(pTHX_ size_t len)
 /* Every entry point makes the object's context current, so that the calling
  * thread always operates on the right device. */
 #define SET_CONTEXT(ctx_sv) \
+    load_driver(aTHX); \
     CHECK_CU(CU(cuCtxSetCurrent)(INT2PTR(CUcontext, SvIV(ctx_sv))), "CtxSetCurrent")
 
 /* Croaks with the same message as the Perl side when a transfer would run past
@@ -529,6 +557,7 @@ CODE:
 {
     CUdevice dev;
 
+    load_driver(aTHX);
     CHECK_CU(CU(cuDeviceGet)(&dev, ordinal), "DeviceGet");
     CHECK_CU(CU(cuDevicePrimaryCtxRelease)(dev), "DevicePrimaryCtxRelease");
 }

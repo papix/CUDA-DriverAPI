@@ -10,8 +10,7 @@ is \@warnings, [], 'without warnings';
 # Without a usable driver, new() reports why instead of failing to load.
 my $error = eval { CUDA::DriverAPI->new; 1 } ? undef : $@;
 if (defined $error) {
-    like $error, qr/\A(?:CUDA driver (?:not found|not usable|too old)|CUDA error at \w+:)/,
-        "new() explains the missing driver or device: $error";
+    like $error, qr/\A(?:CUDA driver |CUDA error at \w+:)/, "new() explains the missing driver or device: $error";
 }
 else {
     pass 'a CUDA device is available';
